@@ -1,0 +1,209 @@
+---
+title: "Untitled"
+author: "Elizabet Sanyal"
+date: "2023-06-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(reticulate)
+library(tensorflow)
+library(abind)
+library(keras)
+library(xts)
+library(PerformanceAnalytics)
+library(kableExtra)
+library(lubridate)
+library(tidyverse)
+```
+
+
+```{r}
+load("~/R/Test_GPU/data_ml.RData")
+stock_ids <- levels(as.factor(data_ml$stock_id)) # A list of all stock_ids
+stock_days <- data_ml %>%                        # Compute the number of data points per stock
+    group_by(stock_id) %>% summarize(nb = n()) 
+stock_ids_short <- stock_ids[which(stock_days$nb == max(stock_days$nb))] # Stocks with full data
+returns <- data_ml %>%                           # Compute returns, in matrix format, in 3 steps:
+    filter(stock_id %in% stock_ids_short) %>%    # 1. Filtering the data
+    dplyr::select(date, stock_id, R1M_Usd) %>%   # 2. Keep returns along with dates & firm names
+    spread(key = stock_id, value = R1M_Usd)      # 3. Put in matrix shape 
+features <- colnames(data_ml[3:95]) # Keep the feature's column names (hard-coded, beware!)
+features_short <- c("Div_Yld", "Eps", "Mkt_Cap_12M_Usd", "Mom_11M_Usd", 
+                    "Ocf", "Pb", "Vol1Y_Usd", "Debtequity", "Cash_Per_Share", "Asset_Turnover")
+data_ml <- data_ml %>% 
+    group_by(date) %>%                                   # Group by date
+    mutate(R1M_Usd_C = R1M_Usd > median(R1M_Usd),        # Create the categorical labels
+           R12M_Usd_C = R1M_Usd > median(R12M_Usd)) %>%
+    ungroup() %>%
+    mutate_if(is.logical, as.factor)
+
+
+
+
+data_short <- data_ml %>%         # Shorter dataset
+    filter(stock_id %in% stock_ids_short) %>%
+    dplyr::select(c("stock_id", "date",features_short, "R1M_Usd"))
+dates <- unique(data_short$date)  # Vector of dates for the training period
+
+glimpse(data_short)
+
+```
+
+
+```{r}
+data_wide <- data_short %>%  select(-R1M_Usd)%>%
+  pivot_wider(names_from = stock_id, values_from = Div_Yld:Asset_Turnover) %>% arrange(date) %>% select(-date) 
+
+returns <- data_short %>%  select(R1M_Usd,stock_id, date) %>%
+  pivot_wider(names_from = stock_id, values_from = R1M_Usd) %>% arrange(date) %>% select(-date)
+
+```
+
+
+```{r}
+sharpe_ratio_loss <- function(y_ret, y_pred) {
+  backend <-  backend()
+  # Multiply predicted weights by observed returns
+  weighted_returns <-  y_ret*y_pred
+  portfolio_return <- k_sum(weighted_returns, axis = 2)
+  k_print_tensor(portfolio_return, "That returns of the batch portfolios")
+ 
+  # Calculate mean and standard deviation of portfolio return
+  mean_return <- backend$mean(portfolio_return)
+ 
+  std_return <- backend$std(portfolio_return)
+ 
+  # Calculate Sharpe ratio
+  sharpe_ratio <- mean_return / (std_return + backend$constant(0.001))
+  # Minimize the negative Sharpe ratio (maximize the Sharpe ratio)
+  return(-sharpe_ratio)
+}
+
+# Custom activation function
+my_activation <- function(x) {
+   
+backend <-  backend()
+  constant <- (k_sum(x)+backend$epsilon()+ backend$constant(0.01*372)) 
+  
+
+output <- (x+backend$constant(0.01))/constant
+  return(output)
+}
+
+
+
+```
+
+
+
+```{r}
+# Define dropout rate
+dropout_rate <- 0.2
+num_features <- 3720
+val_window <- 50
+training_window <- 60
+l1_lambda <- 0.01  
+backtest <- function(t, data_train_wide, returns_train) {
+
+  
+  # Train the model with expanding window
+  history <- list()
+  predictions <- list()
+  
+    window_data <- as.matrix(data_train_wide[1:t,])
+    window_returns <- as.matrix(returns_train[1:t,])
+    
+    val_window_data <- as.matrix(data_train_wide[t:(t+val_window),])
+    val_returns <- as.matrix(returns_train[t:(t+val_window),])
+    
+    data_predict <- as.matrix(data_train_wide[(t+1+val_window),])
+    
+    
+    num_features <- ncol(data_train_wide)
+    layer_1 <- layer_input(shape = c(num_features), name = "input_1",)
+    
+    layer_linear <-  layer_1 %>% layer_dense(units = 1, activation = "linear",kernel_initializer = 'random_normal') %>% 
+ layer_batch_normalization()
+
+
+     layer_2 <- layer_input(shape = c(num_features), name = "input_2")
+     
+     layer_nonlinear <- layer_2 %>% layer_dense(units = 1,                                                    activation = "tanh",
+                                                kernel_initializer = 'random_normal') %>% 
+  layer_batch_normalization()  %>%
+  layer_dropout(rate = dropout_rate)
+
+
+
+# Concatenate the output of both parallel layers
+      concat <- layer_concatenate(list(layer_linear, layer_nonlinear))
+
+# Add another dense layer after concatenation
+       layer_3 <- concat %>%
+                    layer_dense(units = length(stock_ids_short)*2, activation = "relu", kernel_initializer = 'random_normal')
+
+# Define the rest of the model
+        output <- layer_3 %>%
+                 layer_dense(units = length(stock_ids_short), activation = "linear",kernel_initializer = 'random_normal')  %>% layer_lambda( my_activation) # full investment constrain
+
+          model <- keras_model(inputs = list(layer_1, layer_2), outputs = output)
+
+# Compile the model
+           model %>% compile(
+               loss = sharpe_ratio_loss,
+                        optimizer = optimizer_adam(learning_rate = 0.001)
+                             )
+# Define EarlyStopping callback
+early_stopping <- callback_early_stopping(
+  monitor = "val_loss",
+  patience = 30,
+  restore_best_weights = TRUE
+)
+# Train the model
+history[[t]] <- model %>% fit(
+  x = list(window_data, window_data), y = window_returns, epochs = 100, batch_size = 36, verbose = 2,  validation_data = list(list(val_window_data, val_window_data), val_returns),
+  callbacks = list(early_stopping))
+
+    
+    window_predictions <- predict(model, list(data_predict,data_predict))
+   
+    
+  
+  
+  return(window_predictions)
+}
+
+
+```
+
+```{r}
+summary(model)
+plot(model)
+```
+
+```{r}
+library(purrr)
+
+testing_periods <- 12
+#max possible nrow(data_wide)-training_window-val_window
+
+t_values <- seq(training_window, training_window+testing_periods)
+
+backtest_results <- map(t_values, backtest, data_wide, returns)
+
+test_sample_returns <- as.matrix(returns[(training_window+val_window+1):(training_window+val_window+testing_periods+1),])
+weights_sample_returns <- do.call(rbind, lapply(backtest_results, unlist))
+test_pf_ret <- rowSums(weights_sample_returns *  test_sample_returns)
+
+#Metrics:
+
+mean(test_pf_ret)/sd(test_pf_ret)
+```
+
+
+
