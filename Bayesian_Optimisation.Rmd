@@ -1,0 +1,118 @@
+---
+title: "Bayesian_Optimisation"
+author: "Elizabet Sanyal"
+date: "2023-06-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+
+
+# Define dropout rate
+dropout_rate <- 0.2
+num_features <- 3720
+val_window <- 50
+training_window <- 60
+l1_lambda <- 0.01  
+window_data <- as.matrix(data_wide[1:training_window,])
+window_returns <- as.matrix(returns[1:training_window,])
+    
+val_window_data <- as.matrix(data_wide[training_window:(training_window+val_window),])
+val_returns <- as.matrix(returns[training_window:(training_window+val_window),])
+
+
+num_features <- ncol(data_wide)
+
+
+build_model <- function(hp) {
+  
+    layer <- hp$Choice('layer', c(1, 2))
+    layer_1 <- layer_input(shape = c(num_features), 
+                           name = "input_1")
+    
+    layer_linear <-  layer_1 %>% 
+                           layer_dense(units = hp$Int('units_lin',
+                                      min_value=1,
+                                      max_value=512,
+                                      step=32), 
+                                       activation = "linear",
+                                       kernel_initializer = 'glorot_uniform') %>%
+                           layer_dropout(rate = hp$Choice('rate',
+                values=c(0, 0.1, 0.2, 0.5))) 
+
+
+     layer_2 <- layer_input(shape = c(num_features), name = "input_2")
+     
+     layer_nonlinear <- layer_2 %>% layer_dense(units = hp$Int('units_nlin_i',
+                                      min_value=1,
+                                      max_value=512,
+                                      step=32),                                                                                          activation = hp$Choice('activation', c('tanh', 'relu', 'sigmoid')),
+                                                kernel_initializer = 'glorot_uniform')  %>%
+                         layer_dropout(rate = hp$Choice('rate',
+                values=c(0, 0.1, 0.2, 0.5)))
+     
+     if (layer!=1) {
+       
+       layer_nonlinear <- layer_nonlinear %>%  layer_dense(units = hp$Int('units_nlin_ii',
+                                      min_value=1,
+                                      max_value=512,
+                                      step=32),                                                                                          activation = hp$Choice('activation', c('tanh', 'relu', 'sigmoid')),
+                                                kernel_initializer = 'glorot_uniform')
+       
+     }
+
+      concat <- layer_concatenate(list(layer_linear, layer_nonlinear))
+      layer_3 <- concat %>%
+                    layer_dense(units = hp$Int('units_conc',
+                                      min_value=1,
+                                      max_value=512,
+                                      step=32), 
+                                activation = hp$Choice('activation', c('tanh', 'relu', 'sigmoid')), 
+                                kernel_initializer = 'glorot_uniform')
+
+# Define the rest of the model
+        output <- layer_3 %>%
+                 layer_dense(units = length(stock_ids_short), 
+                             activation = "linear",
+                             kernel_initializer = 'glorot_uniform')  %>% 
+          layer_lambda(my_activation) # full investment constrain
+
+          model <- keras_model(inputs = list(layer_1, layer_2), outputs = output)
+
+# Compile the model
+           model %>% compile(
+               loss = sharpe_ratio_loss,
+               optimizer = optimizer_adam(learning_rate = hp$Choice('learning_rate',
+                values=c(1e-2, 1e-3, 1e-4)))
+                             )
+
+  return(model)
+ 
+}
+```
+
+
+```{r}
+library(kerastuneR)
+tuner <- kerastuneR::RandomSearch(
+    build_model,
+    objective = 'val_loss',
+    max_trials = 30,
+    executions_per_trial = 3,
+    directory = '~/R/ML_SR',
+    project_name = 'B_opt_deep_portfolio')
+```
+
+
+```{r}
+tuner %>% fit_tuner(list(window_data, window_data),window_returns,
+                    epochs = 30, 
+                    validation_data = list(list(val_window_data, val_window_data),val_returns))
+```
+
