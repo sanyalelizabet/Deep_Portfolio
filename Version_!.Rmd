@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "Main"
 author: "Elizabet Sanyal"
 date: "2023-06-14"
 output: html_document
@@ -7,6 +7,9 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+source("custom_nn_keras.R", local = knitr::knit_global())
+
 ```
 
 ```{r, warning=FALSE, message=FALSE}
@@ -21,26 +24,18 @@ library(lubridate)
 library(tidyverse)
 library(purrr)
 load("~/R/Test_GPU/data_ml.RData")
-stock_ids <- levels(as.factor(data_ml$stock_id)) # A list of all stock_ids
-stock_days <- data_ml %>%                        # Compute the number of data points per stock
+stock_ids <- levels(as.factor(data_ml$stock_id)) 
+stock_days <- data_ml %>%                        
     group_by(stock_id) %>% summarize(nb = n()) 
 stock_ids_short <- stock_ids[which(stock_days$nb == max(stock_days$nb))] # Stocks with full data
-returns <- data_ml %>%                           # Compute returns, in matrix format, in 3 steps:
-    filter(stock_id %in% stock_ids_short) %>%    # 1. Filtering the data
-    dplyr::select(date, stock_id, R1M_Usd) %>%   # 2. Keep returns along with dates & firm names
-    spread(key = stock_id, value = R1M_Usd)      # 3. Put in matrix shape 
+returns <- data_ml %>%                           
+    filter(stock_id %in% stock_ids_short) %>%    
+    dplyr::select(date, stock_id, R1M_Usd) %>%   
+    spread(key = stock_id, value = R1M_Usd)
+
 features <- colnames(data_ml[3:95]) # Keep the feature's column names (hard-coded, beware!)
 features_short <- c("Div_Yld", "Eps", "Mkt_Cap_12M_Usd", "Mom_11M_Usd", 
                     "Ocf", "Pb", "Vol1Y_Usd", "Debtequity", "Cash_Per_Share", "Asset_Turnover")
-data_ml <- data_ml %>% 
-    group_by(date) %>%                                   # Group by date
-    mutate(R1M_Usd_C = R1M_Usd > median(R1M_Usd),        # Create the categorical labels
-           R12M_Usd_C = R1M_Usd > median(R12M_Usd)) %>%
-    ungroup() %>%
-    mutate_if(is.logical, as.factor)
-
-
-
 
 data_short <- data_ml %>%         # Shorter dataset
     filter(stock_id %in% stock_ids_short) %>%
@@ -55,49 +50,15 @@ glimpse(data_short)
 ```{r}
 
 data_wide <- data_short %>%  select(-R1M_Usd)%>%
-  pivot_wider(names_from = stock_id, values_from = Div_Yld:Asset_Turnover) %>% arrange(date) %>% select(-date) 
+  pivot_wider(names_from = stock_id, values_from = Div_Yld:Asset_Turnover) %>%
+  arrange(date) %>% 
+  select(-date) 
 
-returns <- data_short %>%  select(R1M_Usd,stock_id, date) %>%
-  pivot_wider(names_from = stock_id, values_from = R1M_Usd) %>% arrange(date) %>% select(-date)
-
-```
-
-
-
-```{r}
-
-sharpe_ratio_loss <- function(y_ret, y_pred) {
-  backend <-  backend()
-  # Multiply predicted weights by observed returns
-  
-  weighted_returns <-  y_ret*y_pred
-  portfolio_return <- k_sum(weighted_returns, axis = 2)
-
- #k_print_tensor(portfolio_return, "That returns of the batch portfolios")
- 
-  # Calculate mean and standard deviation of portfolio return
-  mean_return <- backend$mean(portfolio_return)
-
- 
-  std_return <- backend$std(portfolio_return)
- 
-  # Calculate Sharpe ratio
-  sharpe_ratio <- (mean_returnbackend$constant(0.001)) / (std_return + backend$constant(0.001))
-  # Minimize the negative Sharpe ratio (maximize the Sharpe ratio)
-  return(-sharpe_ratio)
-}
-
-# Custom activation function
-my_activation <- function(x) {
-   
-backend <-  backend()
-constant_two <- (k_sum(x, axis = 2, keepdims = TRUE)+backend$epsilon())
-
-  output <- tf$divide(x, constant_two)
-
-  return(output)
-}
-
+returns <- data_short %>%  
+  select(R1M_Usd,stock_id, date) %>%
+  pivot_wider(names_from = stock_id, values_from = R1M_Usd) %>% 
+  arrange(date) %>% 
+  select(-date)
 
 ```
 
@@ -115,13 +76,16 @@ activation_nl_ii <-"swish"
 
 
 build_model <- function(rate, units_lin,units_nlin_i, activation_nl_i,units_conc,activation_conc,learning_rate,units_nlin_ii, activation_nl_ii ) {
+     temp <- units_nlin_ii
+     temp <- activation_nl_ii
+     num_features <- ncol(data_wide)
     layer_1 <- layer_input(shape = c(num_features), 
                            name = "Linear_Model_Input")
     
     layer_linear <-  layer_1 %>% 
                            layer_dense(units = units_lin, 
                                        activation = "linear",
-                                       kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05)
+                                       kernel_initializer = initializer_random_normal(mean = 0.09, stddev = 0.04)
                                        ) %>%
                            layer_dropout(rate = rate) 
     
@@ -129,7 +93,7 @@ build_model <- function(rate, units_lin,units_nlin_i, activation_nl_i,units_conc
      
      layer_nonlinear <- layer_2 %>% layer_dense(units = units_nlin_i,
                                                 activation = activation_nl_i,
-                                                kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05)
+                                                kernel_initializer = initializer_random_normal(mean = 0.09, stddev = 0.04)
                                                 )  %>% layer_dropout(rate = rate)
        
       # layer_nonlinear <- layer_nonlinear %>%  layer_dense(units = units_nlin_ii,                                                                              #            activation = activation_nl_ii,kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))
@@ -138,21 +102,21 @@ build_model <- function(rate, units_lin,units_nlin_i, activation_nl_i,units_conc
       layer_3 <- concat %>%
                     layer_dense(units = units_conc, 
                                 activation = activation_conc, 
-                                kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))
+                                kernel_initializer = initializer_random_normal(mean = 0.09, stddev = 0.04))
 
 # Define the rest of the model
         output <- layer_3 %>%
                  layer_dense(units = length(stock_ids_short), 
                              activation = "linear",
-                             kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))  %>% 
-          layer_lambda(my_activation) # full investment constrain
+                             kernel_initializer = initializer_random_normal(mean = 0.09, stddev = 0.04))  %>% 
+          layer_lambda(w_full_constraint) # full investment constrain
 
           model <- keras_model(inputs = list(layer_1, layer_2), outputs = output)
 
 # Compile the model
            model %>% compile(
                loss = sharpe_ratio_loss,
-               optimizer = optimizer_adam(learning_rate = 0.001)
+               optimizer = optimizer_adam(learning_rate = learning_rate)
                              
                              )
            return(model)
@@ -179,9 +143,7 @@ backtest <- function(t, data_wide, returns) {
     
     model <- build_model(rate, units_lin,units_nlin_i, activation_nl_i,units_conc,activation_conc,learning_rate,units_nlin_ii, activation_nl_ii )
     
-    window_prediction <- predict(model, list(data_predict,data_predict)
-                                 )
- 
+    
      early_stopping <- callback_early_stopping(monitor = "val_loss",
                                                patience = 15,
                                                restore_best_weights = TRUE
@@ -195,7 +157,10 @@ backtest <- function(t, data_wide, returns) {
                                    validation_data = list(list(val_window_data, val_window_data), val_returns),
                                    shuffle=FALSE,
                                    callbacks = list(early_stopping))
-  return(window_prediction)
+    
+    prediction_w_t <- predict(model, list(data_predict,data_predict))
+                              
+  return(prediction_w_t)
 }
 
 
@@ -206,7 +171,7 @@ backtest <- function(t, data_wide, returns) {
 ```{r}
 
 
-testing_periods <-  nrow(data_wide)-training_window-val_window
+testing_periods <-  16
 #max possible nrow(data_wide)-training_window-val_window
 
 t_values <- seq(training_window, training_window+testing_periods)
