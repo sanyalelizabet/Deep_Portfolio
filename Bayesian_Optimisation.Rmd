@@ -13,7 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 
-
+library(kerastuneR)
 # Define dropout rate
 dropout_rate <- 0.2
 num_features <- 3720
@@ -42,7 +42,7 @@ build_model <- function(hp) {
                                       max_value=512,
                                       step=32), 
                                        activation = "linear",
-                                       kernel_initializer = 'glorot_uniform') %>%
+                                       kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05)) %>%
                            layer_dropout(rate = hp$Choice('rate',
                 values=c(0, 0.1, 0.2, 0.5))) 
 
@@ -52,8 +52,8 @@ build_model <- function(hp) {
      layer_nonlinear <- layer_2 %>% layer_dense(units = hp$Int('units_nlin_i',
                                       min_value=1,
                                       max_value=512,
-                                      step=32),                                                                                          activation = hp$Choice('activation', c('tanh', 'relu', 'sigmoid')),
-                                                kernel_initializer = 'glorot_uniform')  %>%
+                                      step=32),                                                                                          activation = hp$Choice('activation_nl_i', c('tanh','swish', 'sigmoid')),
+                                                kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))  %>%
                          layer_dropout(rate = hp$Choice('rate',
                 values=c(0, 0.1, 0.2, 0.5)))
      
@@ -62,8 +62,8 @@ build_model <- function(hp) {
        layer_nonlinear <- layer_nonlinear %>%  layer_dense(units = hp$Int('units_nlin_ii',
                                       min_value=1,
                                       max_value=512,
-                                      step=32),                                                                                          activation = hp$Choice('activation', c('tanh', 'relu', 'sigmoid')),
-                                                kernel_initializer = 'glorot_uniform')
+                                      step=32),                                                                                          activation = hp$Choice('activation_nl_ii', c('tanh','swish', 'sigmoid')),
+                                                kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))
        
      }
 
@@ -73,14 +73,14 @@ build_model <- function(hp) {
                                       min_value=1,
                                       max_value=512,
                                       step=32), 
-                                activation = hp$Choice('activation', c('tanh', 'relu', 'sigmoid')), 
-                                kernel_initializer = 'glorot_uniform')
+                                activation = hp$Choice('activation_conc', c('tanh','swish', 'sigmoid')), 
+                                kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))
 
 # Define the rest of the model
         output <- layer_3 %>%
                  layer_dense(units = length(stock_ids_short), 
                              activation = "linear",
-                             kernel_initializer = 'glorot_uniform')  %>% 
+                             kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))  %>% 
           layer_lambda(my_activation) # full investment constrain
 
           model <- keras_model(inputs = list(layer_1, layer_2), outputs = output)
@@ -95,24 +95,26 @@ build_model <- function(hp) {
   return(model)
  
 }
-```
 
 
-```{r}
-library(kerastuneR)
 tuner <- kerastuneR::RandomSearch(
     build_model,
     objective = 'val_loss',
-    max_trials = 30,
-    executions_per_trial = 3,
+    max_trials = 100,
+    executions_per_trial = 1,
     directory = '~/R/ML_SR',
     project_name = 'B_opt_deep_portfolio')
+
+tuner %>% fit_tuner(list(window_data, window_data),window_returns,
+                    epochs = 15, 
+                    validation_data = list(list(val_window_data, val_window_data),val_returns),  shuffle=FALSE)
 ```
 
-
 ```{r}
-tuner %>% fit_tuner(list(window_data, window_data),window_returns,
-                    epochs = 30, 
-                    validation_data = list(list(val_window_data, val_window_data),val_returns))
+best_5_models  <- tuner %>% get_best_models(5)
+best_5_models[[1]] 
+```
+```{r}
+tuner %>%results_summary(10)
 ```
 

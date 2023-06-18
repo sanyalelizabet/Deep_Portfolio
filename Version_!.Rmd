@@ -19,7 +19,7 @@ library(PerformanceAnalytics)
 library(kableExtra)
 library(lubridate)
 library(tidyverse)
-
+library(purrr)
 load("~/R/Test_GPU/data_ml.RData")
 stock_ids <- levels(as.factor(data_ml$stock_id)) # A list of all stock_ids
 stock_days <- data_ml %>%                        # Compute the number of data points per stock
@@ -63,7 +63,9 @@ returns <- data_short %>%  select(R1M_Usd,stock_id, date) %>%
 ```
 
 
+
 ```{r}
+
 sharpe_ratio_loss <- function(y_ret, y_pred) {
   backend <-  backend()
   # Multiply predicted weights by observed returns
@@ -71,7 +73,7 @@ sharpe_ratio_loss <- function(y_ret, y_pred) {
   weighted_returns <-  y_ret*y_pred
   portfolio_return <- k_sum(weighted_returns, axis = 2)
 
- k_print_tensor(portfolio_return, "That returns of the batch portfolios")
+ #k_print_tensor(portfolio_return, "That returns of the batch portfolios")
  
   # Calculate mean and standard deviation of portfolio return
   mean_return <- backend$mean(portfolio_return)
@@ -80,7 +82,7 @@ sharpe_ratio_loss <- function(y_ret, y_pred) {
   std_return <- backend$std(portfolio_return)
  
   # Calculate Sharpe ratio
-  sharpe_ratio <- mean_return / (std_return + backend$constant(0.001))
+  sharpe_ratio <- (mean_returnbackend$constant(0.001)) / (std_return + backend$constant(0.001))
   # Minimize the negative Sharpe ratio (maximize the Sharpe ratio)
   return(-sharpe_ratio)
 }
@@ -89,9 +91,7 @@ sharpe_ratio_loss <- function(y_ret, y_pred) {
 my_activation <- function(x) {
    
 backend <-  backend()
-
-  constant <- (k_sum(x)+backend$epsilon()) 
-  constant_two <- (k_sum(x, axis = 2, keepdims = TRUE)+backend$epsilon())
+constant_two <- (k_sum(x, axis = 2, keepdims = TRUE)+backend$epsilon())
 
   output <- tf$divide(x, constant_two)
 
@@ -102,96 +102,111 @@ backend <-  backend()
 ```
 
 
-
 ```{r}
-# Define dropout rate
-dropout_rate <- 0.2
-num_features <- 3720
-val_window <- 50
-training_window <- 60
-l1_lambda <- 0.01  
-backtest <- function(t, data_wide, returns) {
- 
-  
-  # Train the model with expanding window
-  history <- list()
-  predictions <- list()
-  
-    window_data <- as.matrix(data_wide[1:t,])
-    window_returns <- as.matrix(returns[1:t,])
-    
-    val_window_data <- as.matrix(data_wide[t:(t+val_window),])
-    val_returns <- as.matrix(returns[t:(t+val_window),])
-    
-    data_predict <- as.matrix(data_wide[(t+1+val_window),])
-    
-    
-    num_features <- ncol(data_wide)
-    layer_1 <- layer_input(shape = c(num_features), name = "input_1",)
-    
-    layer_linear <-  layer_1 %>% layer_dense(units = 1, activation = "linear",kernel_initializer = 'random_normal') %>% 
- layer_batch_normalization()
+rate <- 0.5
+units_lin <-  481
+units_nlin_i <- 321
+activation_nl_i <- "tanh"
+units_conc <- 1
+activation_conc <- "swish"
+learning_rate <-0.01
+units_nlin_ii <- 385
+activation_nl_ii <-"swish"
 
 
-     layer_2 <- layer_input(shape = c(num_features), name = "input_2")
+build_model <- function(rate, units_lin,units_nlin_i, activation_nl_i,units_conc,activation_conc,learning_rate,units_nlin_ii, activation_nl_ii ) {
+    layer_1 <- layer_input(shape = c(num_features), 
+                           name = "Linear_Model_Input")
+    
+    layer_linear <-  layer_1 %>% 
+                           layer_dense(units = units_lin, 
+                                       activation = "linear",
+                                       kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05)
+                                       ) %>%
+                           layer_dropout(rate = rate) 
+    
+     layer_2 <- layer_input(shape = c(num_features), name = "Non-Linear_Model_Input")
      
-     layer_nonlinear <- layer_2 %>% layer_dense(units = 1,                                                    activation = "tanh",
-                                                kernel_initializer = 'random_normal') %>% 
-  layer_batch_normalization()  %>%
-  layer_dropout(rate = dropout_rate)
+     layer_nonlinear <- layer_2 %>% layer_dense(units = units_nlin_i,
+                                                activation = activation_nl_i,
+                                                kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05)
+                                                )  %>% layer_dropout(rate = rate)
+       
+      # layer_nonlinear <- layer_nonlinear %>%  layer_dense(units = units_nlin_ii,                                                                              #            activation = activation_nl_ii,kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))
 
-
-
-# Concatenate the output of both parallel layers
       concat <- layer_concatenate(list(layer_linear, layer_nonlinear))
-
-# Add another dense layer after concatenation
-       layer_3 <- concat %>%
-                    layer_dense(units = length(stock_ids_short)*2, activation = "linear", kernel_initializer = 'random_normal')
+      layer_3 <- concat %>%
+                    layer_dense(units = units_conc, 
+                                activation = activation_conc, 
+                                kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))
 
 # Define the rest of the model
         output <- layer_3 %>%
-                 layer_dense(units = length(stock_ids_short), activation = "linear",kernel_initializer = 'random_normal')  %>% layer_lambda( my_activation) # full investment constrain
+                 layer_dense(units = length(stock_ids_short), 
+                             activation = "linear",
+                             kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))  %>% 
+          layer_lambda(my_activation) # full investment constrain
 
           model <- keras_model(inputs = list(layer_1, layer_2), outputs = output)
 
 # Compile the model
            model %>% compile(
                loss = sharpe_ratio_loss,
-                        optimizer = optimizer_adam(learning_rate = 0.001)
+               optimizer = optimizer_adam(learning_rate = 0.001)
+                             
                              )
-# Define EarlyStopping callback
-early_stopping <- callback_early_stopping(
-  monitor = "val_loss",
-  patience = 30,
-  restore_best_weights = TRUE
-)
-# Train the model
-history[[t]] <- model %>% fit(
-  x = list(window_data, window_data), y = window_returns, epochs = 30, batch_size = 12, verbose = 2,  validation_data = list(list(val_window_data, val_window_data), val_returns),
-  callbacks = list(early_stopping))
+           return(model)
+           } 
+```
 
-    
-    window_predictions <- predict(model, list(data_predict,data_predict))
-   
-    
+```{r}
+# Define dropout rate
+
+num_features <- 3720
+val_window <- 50
+training_window <- 60
+ 
+backtest <- function(t, data_wide, returns) {
+ 
+    history <- list()
+    predictions <- list()
   
-  
-  return(window_predictions)
+    window_data <- as.matrix(data_wide[1:t,])
+    window_returns <- as.matrix(returns[1:t,])
+    val_window_data <- as.matrix(data_wide[t:(t+val_window),])
+    val_returns <- as.matrix(returns[t:(t+val_window),])
+    data_predict <- as.matrix(data_wide[(t+1+val_window),])
+    
+    model <- build_model(rate, units_lin,units_nlin_i, activation_nl_i,units_conc,activation_conc,learning_rate,units_nlin_ii, activation_nl_ii )
+    
+    window_prediction <- predict(model, list(data_predict,data_predict)
+                                 )
+ 
+     early_stopping <- callback_early_stopping(monitor = "val_loss",
+                                               patience = 15,
+                                               restore_best_weights = TRUE
+                                               )
+
+    history[[t]] <- model %>% fit( x = list(window_data, window_data), 
+                                   y = window_returns, 
+                                   epochs = 60, 
+                                   batch_size = 24, 
+                                   verbose = 2,  
+                                   validation_data = list(list(val_window_data, val_window_data), val_returns),
+                                   shuffle=FALSE,
+                                   callbacks = list(early_stopping))
+  return(window_prediction)
 }
 
 
 ```
 
-```{r}
-summary(model)
 
-```
 
 ```{r}
-library(purrr)
 
-testing_periods <- 12
+
+testing_periods <-  nrow(data_wide)-training_window-val_window
 #max possible nrow(data_wide)-training_window-val_window
 
 t_values <- seq(training_window, training_window+testing_periods)
@@ -204,7 +219,7 @@ test_pf_ret <- rowSums(weights_sample_returns *  test_sample_returns)
 
 #Metrics:
 
-mean(test_pf_ret)/sd(test_pf_ret)
+mean(test_pf_ret, na.rm = TRUE)/sd(test_pf_ret, na.rm = TRUE)
 ```
 
 
