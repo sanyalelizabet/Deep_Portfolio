@@ -17,3 +17,21 @@ sharpe_ratio_loss <- function(y_ret, y_pred) {
   
   return(-sharpe_ratio)
 }
+
+
+print_layer_lin_output <- function(x) {
+  k_print_tensor(x, "That output linear")
+  
+  return(x)
+}
+print_layer_non_lin_output <- function(x) {
+  k_print_tensor(x, "That output non linear")
+  
+  return(x)
+}
+
+print_layer_cont_output <- function(x) {
+  k_print_tensor(x, "That output contac")
+  
+  return(x)
+}
