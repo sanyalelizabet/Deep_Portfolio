@@ -42,8 +42,6 @@ data_short <- data_ml %>%         # Shorter dataset
     dplyr::select(c("stock_id", "date",features, "R1M_Usd"))
 dates <- unique(data_short$date)  # Vector of dates for the training period
 
-glimpse(data_short)
-
 ```
 
 
@@ -71,21 +69,35 @@ returns_test <- data_short %>%
   arrange(date) %>% 
   select(-date)
 ```
-
+layer: 2.0
+l1_value_lin: 0.0
+l2_value_lin: 1e-05
+l1_value_nlin: 0.0
+l2_value_nlin: 1e-05
+rate: 0.1
+units_lin: 1
+units_nlin_i: 2701
+activation_nl_i: sigmoid
+units_conc: 2901
+activation_conc: tanh
+learning_rate: 0.01
+units_nlin_ii: 501
+activation_nl_ii: tanh
+Score: 0.28065088391304016
 
 ```{r}
-rate <- 0.5
-units_lin <-  481
-units_nlin_i <- 321
-activation_nl_i <- "tanh"
-units_conc <- 10
-activation_conc <- "swish"
+rate <- 0.1
+units_lin <-  1
+units_nlin_i <- 2701
+activation_nl_i <- "sigmoid"
+units_conc <- 2901
+activation_conc <- "tanh"
 learning_rate <-0.01
-units_nlin_ii <- 385
-activation_nl_ii <-"swish"
-
-
-build_model <- function(rate, units_lin,units_nlin_i, activation_nl_i,units_conc,activation_conc,learning_rate,units_nlin_ii, activation_nl_iiб, data ) {
+units_nlin_ii <- 501
+activation_nl_ii <-"tanh"
+l2_value_lin <- 1e-05
+l2_value_nlin <- 1e-05
+build_model <- function(rate, units_lin,units_nlin_i, activation_nl_i,units_conc,activation_conc,learning_rate,units_nlin_ii, activation_nl_iiб, data ){
      temp <- units_nlin_ii
      temp <- activation_nl_ii
      num_features <- ncol(data)
@@ -95,7 +107,8 @@ build_model <- function(rate, units_lin,units_nlin_i, activation_nl_i,units_conc
     layer_linear <-  layer_1 %>% 
                            layer_dense(units = units_lin, 
                                        activation = "linear",
-                                       kernel_initializer = initializer_random_normal(mean = 0, stddev = 0.04)
+                                       kernel_initializer = initializer_random_normal(mean = 0, stddev = 0.04),
+                                       kernel_regularizer = regularizer_l1_l2(l1 = 0, l2 =l2_value_lin )
                                        ) %>%
                            layer_batch_normalization(scale = TRUE, center = TRUE) %>%
                            layer_dropout(rate = rate) 
@@ -104,10 +117,11 @@ build_model <- function(rate, units_lin,units_nlin_i, activation_nl_i,units_conc
      
      layer_nonlinear <- layer_2 %>% layer_dense(units = units_nlin_i,
                                                 activation = activation_nl_i,
-                                                kernel_initializer = initializer_random_normal(mean = 0, stddev = 0.04)
+                                                kernel_initializer = initializer_random_normal(mean = 0, stddev = 0.04),
+                                                 kernel_regularizer = regularizer_l1_l2(l1 = 0, l2 =l2_value_nlin )
                                                 )  %>% layer_dropout(rate = rate)  
        
-      # layer_nonlinear <- layer_nonlinear %>%  layer_dense(units = units_nlin_ii,                                                                              #            activation = activation_nl_ii,kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))
+      layer_nonlinear <- layer_nonlinear %>%  layer_dense(units = units_nlin_ii,                                                                                          activation = activation_nl_ii,kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))
 
       concat <- layer_concatenate(list(layer_linear, layer_nonlinear))
       layer_3 <- concat %>%
@@ -121,7 +135,7 @@ build_model <- function(rate, units_lin,units_nlin_i, activation_nl_i,units_conc
                  layer_dense(units = length(stock_ids_short), 
                              activation = "linear",
                              kernel_initializer = initializer_random_normal(mean = 0, stddev = 0.04))  %>% 
-          layer_lambda(w_full_constraint) # full investment constrain
+          layer_lambda(w_full_constraint_leverage) # full investment constrain with no legerage allowed
 
           model <- keras_model(inputs = list(layer_1, layer_2), outputs = output)
 
@@ -132,20 +146,20 @@ build_model <- function(rate, units_lin,units_nlin_i, activation_nl_i,units_conc
                              
                              )
            return(model)
-           } 
+} 
+
+
 ```
 
 ```{r}
 # Define dropout rate
 
 num_features <- ncol(data_wide)
-val_window <- 50
+val_window <- 60
 training_window <- 60
  
 backtest <- function(t, data_wide, returns) {
  
-    history <- list()
-    predictions <- list()
   
     window_data <- as.matrix(data_wide[1:t,])
     window_returns <- as.matrix(returns[1:t,])
@@ -161,26 +175,26 @@ backtest <- function(t, data_wide, returns) {
                                                restore_best_weights = TRUE
                                                )
      
-     # Define the ReduceLROnPlateau callback
-    lr_callback <- callback_reduce_lr_on_plateau(
-       monitor = 'val_loss',  # The metric to monitor
-         factor = 0.01,           # Factor by which the learning rate will be reduced (e.g., 0.1 for 10% reduction)
-        patience = 5,          # Number of epochs with no improvement after which learning rate will be reduced
-           verbose = 1,            # Set to 1 for output during training
-                    mode = 'auto'           # 'auto', 'min', or 'max' - whether to reduce the learning rate on 'min' or 'max' of the monitored quantity
-              )
+    
+    lr_callback <- callback_reduce_lr_on_plateau( monitor = 'val_loss',
+                                                  factor = 0.01, 
+                                                  patience = 5,
+                                                  verbose = 1,
+                                                  mode = 'auto'
+                                                  )
 
 
 
 
-    history[[t]] <- model %>% fit( x = list(window_data, window_data), 
+    model %>% fit( x = list(window_data, window_data), 
                                    y = window_returns, 
-                                   epochs = 1, 
-                                   batch_size = 48, 
+                                   epochs = 60, 
+                                   batch_size = 60, 
                                    verbose = 2,  
                                    validation_data = list(list(val_window_data, val_window_data), val_returns),
                                    shuffle=FALSE,
-                                   callbacks = list(early_stopping, lr_callback))
+                                   callbacks = list(early_stopping, lr_callback)
+                   )
     
     prediction_w_t <- predict(model, list(data_predict,data_predict))
     

@@ -16,7 +16,7 @@ w_full_constraint_leverage <- function(x) {
   output <- tf$divide(output_clipped, constant_two)
   return(output)
 }
-
+ 
 
 
 

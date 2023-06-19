@@ -15,11 +15,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(kerastuneR)
 # Define dropout rate
-dropout_rate <- 0.2
-num_features <- 3720
-val_window <- 50
+
+
+val_window <- 60
 training_window <- 60
-l1_lambda <- 0.01  
+
 window_data <- as.matrix(data_wide[1:training_window,])
 window_returns <- as.matrix(returns[1:training_window,])
     
@@ -35,35 +35,34 @@ build_model <- function(hp) {
     layer <- hp$Choice('layer', c(1, 2))
     layer_1 <- layer_input(shape = c(num_features), 
                            name = "input_1")
-    
+    l1_value_lin <- 0
+    l2_value_lin <- hp$Choice('l2_value_lin', c(0, 0.00001, 0.0001))
+    l1_value_nlin <- 0
+    l2_value_nlin <- hp$Choice('l2_value_nlin', c(0, 0.00001, 0.0001))
     layer_linear <-  layer_1 %>% 
-                           layer_dense(units = hp$Int('units_lin',
-                                      min_value=1,
-                                      max_value=512,
-                                      step=32), 
+                           layer_dense(units = hp$Int('units_lin',min_value=1,max_value=3,step=1), 
                                        activation = "linear",
-                                       kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05)) %>%
-                           layer_dropout(rate = hp$Choice('rate',
-                values=c(0, 0.1, 0.2, 0.5))) 
+                                       kernel_initializer = initializer_random_normal(mean = 0, stddev = 0.05),
+                                      kernel_regularizer = regularizer_l1_l2(l1 = l1_value_lin, l2 =l2_value_lin )) %>%
+                           layer_batch_normalization(scale = TRUE, center = TRUE)%>% layer_dropout(rate = hp$Choice('rate', c(0,0.1, 0.2)))
 
 
      layer_2 <- layer_input(shape = c(num_features), name = "input_2")
      
-     layer_nonlinear <- layer_2 %>% layer_dense(units = hp$Int('units_nlin_i',
-                                      min_value=1,
-                                      max_value=512,
-                                      step=32),                                                                                          activation = hp$Choice('activation_nl_i', c('tanh','swish', 'sigmoid')),
-                                                kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))  %>%
-                         layer_dropout(rate = hp$Choice('rate',
-                values=c(0, 0.1, 0.2, 0.5)))
+     layer_nonlinear <- layer_2 %>% layer_dense(units = hp$Int('units_nlin_i',min_value=1,max_value=2500,step=25),
+                                                activation = hp$Choice('activation_nl_i', c('tanh','swish', 'sigmoid')),
+                                                kernel_initializer = initializer_random_normal(mean = 0, stddev = 0.05),
+                                                kernel_regularizer = regularizer_l1_l2(l1 = l1_value_nlin, l2 =l2_value_nlin )
+                                      )  %>% layer_batch_normalization(scale = TRUE, center = TRUE) %>% layer_dropout(rate = hp$Choice('rate', c(0,0.1, 0.2)))
+                           
      
      if (layer!=1) {
        
        layer_nonlinear <- layer_nonlinear %>%  layer_dense(units = hp$Int('units_nlin_ii',
                                       min_value=1,
-                                      max_value=512,
-                                      step=32),                                                                                          activation = hp$Choice('activation_nl_ii', c('tanh','swish', 'sigmoid')),
-                                                kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))
+                                      max_value=500,
+                                      step=25),                                                                                          activation = hp$Choice('activation_nl_ii', c('tanh','swish', 'sigmoid')),
+                                                kernel_initializer = initializer_random_normal(mean = 0, stddev = 0.05))%>% layer_dropout(rate = hp$Choice('rate', c(0,0.1, 0.2)))
        
      }
 
@@ -71,8 +70,8 @@ build_model <- function(hp) {
       layer_3 <- concat %>%
                     layer_dense(units = hp$Int('units_conc',
                                       min_value=1,
-                                      max_value=512,
-                                      step=32), 
+                                      max_value=4000,
+                                      step=100), 
                                 activation = hp$Choice('activation_conc', c('tanh','swish', 'sigmoid')), 
                                 kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))
 
@@ -81,7 +80,7 @@ build_model <- function(hp) {
                  layer_dense(units = length(stock_ids_short), 
                              activation = "linear",
                              kernel_initializer = initializer_random_normal(mean = 0.05, stddev = 0.05))  %>% 
-          layer_lambda(my_activation) # full investment constrain
+          layer_lambda(w_full_constraint) # full investment constrain
 
           model <- keras_model(inputs = list(layer_1, layer_2), outputs = output)
 
@@ -89,7 +88,7 @@ build_model <- function(hp) {
            model %>% compile(
                loss = sharpe_ratio_loss,
                optimizer = optimizer_adam(learning_rate = hp$Choice('learning_rate',
-                values=c(1e-2, 1e-3, 1e-4)))
+                values=c(0.1, 0.001)), clipnorm=0.01)
                              )
 
   return(model)
@@ -100,13 +99,13 @@ build_model <- function(hp) {
 tuner <- kerastuneR::RandomSearch(
     build_model,
     objective = 'val_loss',
-    max_trials = 100,
+    max_trials = 50,
     executions_per_trial = 1,
     directory = '~/R/ML_SR',
     project_name = 'B_opt_deep_portfolio')
 
-tuner %>% fit_tuner(list(window_data, window_data),window_returns,
-                    epochs = 15, 
+tuner %>% fit_tuner(list(window_data, window_data),window_returns, batch_size =30,
+                    epochs = 60, 
                     validation_data = list(list(val_window_data, val_window_data),val_returns),  shuffle=FALSE)
 ```
 
