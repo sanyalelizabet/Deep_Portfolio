@@ -13,10 +13,17 @@ w_full_constraint_leverage <- function(x) {
   output_norm <- tf$divide(x, constant)
   output_clipped <- tf$clip_by_value(output_norm, -0.5, 0.55)
   constant_two <- (k_sum(output_clipped, axis = 2, keepdims = TRUE)+backend$epsilon())
+<<<<<<< HEAD
   output <- tf$divide(output_clipped, constant_two)
   return(output)
 }
  
+=======
+  output <- tf$divide(x, constant_two)
+  return(output)
+}
+
+>>>>>>> 9a88c1da99c6488645fbba3774a259a19b3df77c
 
 
 
