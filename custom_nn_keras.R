@@ -6,6 +6,27 @@ w_full_constraint <- function(x) {
   return(output)
 }
 
+
+w_full_constraint_leverage <- function(x) {
+  backend <-  backend()
+  constant <- (k_sum(x, axis = 2, keepdims = TRUE)+backend$epsilon())
+  output_norm <- tf$divide(x, constant)
+  output_clipped <- tf$clip_by_value(output_norm, -0.5, 0.55)
+  constant_two <- (k_sum(output_clipped, axis = 2, keepdims = TRUE)+backend$epsilon())
+  output <- tf$divide(output_clipped, constant_two)
+  return(output)
+}
+
+
+
+
+
+
+
+
+
+
+
 sharpe_ratio_loss <- function(y_ret, y_pred) {
   backend <-  backend()
   weighted_returns <-  y_ret*y_pred
