@@ -41,9 +41,6 @@ sharpe_ratio_loss <- function(y_ret, y_pred) {
 
 
 
-
-
-
 #not working.. 
 mean_variance_utility <- function(y_ret, y_pred) {
   backend <-  backend()
@@ -74,3 +71,9 @@ print_layer_cont_output <- function(x) {
   
   return(x)
 }
+
+
+
+
+
+
