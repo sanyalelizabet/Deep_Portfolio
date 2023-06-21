@@ -7,93 +7,121 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
+packages <- c("reticulate", "tensorflow", "abind", "keras", "xts", "PerformanceAnalytics", "kableExtra", "lubridate", "tidyverse", "purrr")
+require(packages)
+library(reticulate)
+library(tensorflow)
+library(abind)
+library(keras)
+library(xts)
+library(PerformanceAnalytics)
+library(kableExtra)
+library(lubridate)
+library(tidyverse)
+library(purrr)
+library(dplyr)
+library(tidyr)
+library(rlang)
+library(furrr)
 source("custom_nn_keras.R", local = knitr::knit_global())
 source("data_preparation.R", local = knitr::knit_global())
 source("model_construction.R", local = knitr::knit_global())
 ```
 
 ```{r, warning=FALSE, message=FALSE}
-packages <- c("reticulate", "tensorflow", "abind", "keras", "xts", "PerformanceAnalytics", "kableExtra", "lubridate", "tidyverse", "purrr")
-require(packages)
 
 load("~/R/Test_GPU/data_ml.RData")
+
+data_ml <- data_ml %>% select(-R3M_Usd,-R6M_Usd,-R12M_Usd)
 stock_ids <- levels(as.factor(data_ml$stock_id)) 
 stock_days <- data_ml %>%                        
     group_by(stock_id) %>% summarize(nb = n()) 
 stock_ids_short <- stock_ids[which(stock_days$nb == max(stock_days$nb))] 
-returns <- data_ml %>%                           
-    filter(stock_id %in% stock_ids_short) %>%    
-    dplyr::select(date, stock_id, R1M_Usd) %>%   
-    spread(key = stock_id, value = R1M_Usd)
-
+dates <- unique(data_short$date) 
 features <- colnames(data_ml[3:95]) 
 
 
-data_short <- data_ml %>%         # Shorter dataset
-    filter(stock_id %in% stock_ids_short) %>%
-    dplyr::select(c("stock_id", "date",features, "R1M_Usd"))
-dates <- unique(data_short$date) 
+data_predef_stocks <- process_data(data=data_ml, stock_id_column="stock_id",feature_names=NULL,  label_name="R1M_Usd", use_max_stock_days=TRUE)
 
-```
-
-
-```{r}
-
-data_wide <- data_short %>%  select(-R1M_Usd)%>%
-  pivot_wider(names_from = stock_id, values_from = features) %>%
-  arrange(date) %>% 
-  select(-date) 
-
-returns <- data_short %>%  
-  select(R1M_Usd,stock_id, date) %>% mutate(across(
-    c(R1M_Usd),
-    ~ winsorize(., 0.01)
-  )) %>% 
-  pivot_wider(names_from = stock_id, values_from = R1M_Usd) %>% 
-  arrange(date) %>% 
-  select(-date)
+data_short_wide <- data_predef_stocks$features_wide
+returns_short <- data_predef_stocks$returns_winsorized
+returns_short_test <- data_predef_stocks$returns_short_test
 
 
+data_all_stocks <- process_data(data=data_ml, stock_id_column="stock_id",feature_names=NULL,  label_name="R1M_Usd", use_max_stock_days=FALSE)
 
-returns_test <- data_short %>%  
-  select(R1M_Usd,stock_id, date)  %>% 
-  pivot_wider(names_from = stock_id, values_from = R1M_Usd) %>% 
-  arrange(date) %>% 
-  select(-date)
+data_all_wide <- data_all_stocks$features_wide
+returns_all <- data_all_stocks$returns_winsorized
+returns_all_test <- data_all_stocks$returns
+
+
+data_all_wide_imputed <- impute_rowwise(data_all_wide, FUN=median,features)
 ```
 
 
 
-#Fixed windwon training backtesting:
+# Backtesting with predefined stocks:
 ```{r}
 
  
-backtest <- function(t, data_wide, returns) {
+backtest <- function(t, data_short_wide, returns, simple=TRUE, window="fixed") {
+  
+  if (window=="fixed"){
 
-    window_data <- as.matrix(data_wide[(t-training_window+1):t,])
+    window_data <- as.matrix(data_short_wide[(t-training_window+1):t,])
     window_returns <- as.matrix(returns[(t-training_window+1):t,])
-    val_window_data <- as.matrix(data_wide[t:(t+val_window),])
+    val_window_data <- as.matrix(data_short_wide[t:(t+val_window),])
     val_returns <- as.matrix(returns[t:(t+val_window),])
-    data_predict <- as.matrix(data_wide[(t+1+val_window),])
+    data_predict <- as.matrix(data_short_wide[(t+1+val_window),])
+    
+  } else {
+   
+    first <- (training_window+t)%%6+1
+    window_data <- as.matrix(data_short_wide[first:(t+training_window),])
+    print("that is ")
+    print(t)
+    print("thats number of training data")
+    print(nrow(window_data))
+    window_returns <- as.matrix(returns[first:(t+training_window),])
+    val_window_data <- as.matrix(data_short_wide[t:(t+val_window),])
+    val_returns <- as.matrix(returns[t:(t+val_window),])
+    data_predict <- as.matrix(data_short_wide[(t+1+val_window),])
+    
+    
+  }
 
     
      early_stopping <- callback_early_stopping(monitor = c("val_loss"),
-                                               patience = 10,
+                                               patience = 50,
                                                restore_best_weights = TRUE
                                                )
 
     lr_callback <- callback_reduce_lr_on_plateau( monitor = 'val_loss',
                                                   factor = 0.01, 
-                                                  patience = 5,
+                                                  patience = 10,
                                                   verbose = 1,
                                                   mode = 'auto'
                                                   )
-
-    model %>% fit( x = list(window_data, window_data), 
+    if (simple==TRUE){
+       
+      model %>% fit( x = window_data, 
                                    y = window_returns, 
                                    epochs = 50, 
-                                   batch_size = 30, 
+                                   batch_size = 12, 
+                                   verbose = 2,  
+                                   validation_data = list(val_window_data, val_returns),
+                                   shuffle=FALSE,
+                                   callbacks = list(early_stopping, lr_callback)
+                   )
+    
+    prediction_w_t <- predict(model, data_predict)
+      
+    } else {
+     
+    model %>% fit( x = list(window_data, window_data), 
+                                   y = window_returns, 
+                                   epochs = 150, 
+                                   batch_size = 12, 
                                    verbose = 2,  
                                    validation_data = list(list(val_window_data, val_window_data), val_returns),
                                    shuffle=FALSE,
@@ -101,7 +129,7 @@ backtest <- function(t, data_wide, returns) {
                    )
     
     prediction_w_t <- predict(model, list(data_predict,data_predict))
-    
+    }
                               
   return(prediction_w_t)
 }
@@ -115,7 +143,7 @@ backtest <- function(t, data_wide, returns) {
 ```{r}
 
 
-num_features <- ncol(data_wide)
+num_features <- ncol(data_short_wide)
 val_window <- 60
 training_window <- 60
 
@@ -126,18 +154,18 @@ learning_rate <-0.1
 activation_nl_ii <-"tanh"
 units_choice <- 4
 
-model <- build_simple_model(rate, units_choice, activation_nl_i, learning_rate, activation_nl_ii, data_wide )
-#model <- build_model(rate, units_choice, activation_nl_i,activation_conc,learning_rate, activation_nl_ii, data_wide)
+#model <- build_simple_model(rate, units_choice, activation_nl_i, learning_rate, activation_nl_ii, data_short_wide )
+model <- build_model(rate, units_choice, activation_nl_i,activation_conc,learning_rate, activation_nl_ii, data_short_wide)
     
 
-testing_periods <-  nrow(data_wide)-training_window-val_window
-#max possible nrow(data_wide)-training_window-val_window
+testing_periods <-  nrow(data_short_wide)-training_window-val_window
+#max possible nrow(data_short_wide)-training_window-val_window
 
 t_values <- seq(60, 60+testing_periods)
 
-backtest_results <- map(t_values, backtest, data_wide, returns)
+backtest_results <- map(t_values, backtest, data_short_wide, returns, FALSE, "expand")
 
-test_sample_returns <- as.matrix(returns_test[(training_window+val_window+1):(training_window+val_window+testing_periods+1),])
+test_sample_returns <- as.matrix(returns_short_test[(training_window+val_window+1):(training_window+val_window+testing_periods+1),])
 weights_sample_returns <- do.call(rbind, lapply(backtest_results, unlist))
 test_pf_ret <- rowSums(weights_sample_returns *  test_sample_returns)
 

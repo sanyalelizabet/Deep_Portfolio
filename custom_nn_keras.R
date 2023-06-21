@@ -32,7 +32,7 @@ sharpe_ratio_loss <- function(y_ret, y_pred) {
  
   sharpe_ratio <- (mean_return+backend$constant(0.001)) / (std_return)
   
-  desired_shape <- shape(30, 1)
+  desired_shape <- shape(12, 1)
   repeated_tensor <- tf$fill(dims = desired_shape, value = -sharpe_ratio)
   
   return(-repeated_tensor)

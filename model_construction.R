@@ -19,12 +19,12 @@ build_model <- function(rate, units_choice, activation_nl_i,activation_conc,lear
   layer_2 <- layer_input(shape = c(num_features), name = "Non-Linear_Model_Input")
   layer_nonlinear <- layer_2 %>% layer_dense(units = units_choice*3,
                                              activation = activation_nl_i,
-                                             kernel_initializer = initializer_glorot_uniform(seed=145)
+                                             kernel_initializer = initializer_glorot_uniform(seed=142)
                                              
   )  %>% layer_dropout(rate = rate)  
   layer_nonlinear <- layer_nonlinear %>%  layer_dense(units = units_choice*2,
                                                       activation = activation_nl_ii,
-                                                      kernel_initializer = initializer_glorot_uniform(seed=145))
+                                                      kernel_initializer = initializer_glorot_uniform(seed=141))
   
   
   concat <- layer_concatenate(list(layer_linear, layer_nonlinear))
@@ -67,11 +67,11 @@ build_simple_model <- function(rate, units_choice, activation_nl_i, learning_rat
     layer_dropout(rate = rate) %>%
     layer_dense(units = units_choice * 2,
                 activation = activation_nl_ii,
-                kernel_initializer = initializer_glorot_uniform(seed = 145)) %>%
+                kernel_initializer = initializer_glorot_uniform(seed = 142)) %>%
     layer_batch_normalization(scale = TRUE, center = TRUE) %>%
     layer_dense(units = length(stock_ids_short),
                 activation = "linear",
-                kernel_initializer = initializer_glorot_uniform(seed = 145)) %>%
+                kernel_initializer = initializer_glorot_uniform(seed = 143)) %>%
     layer_lambda(w_full_constraint_leverage) # Full investment constraint with no leverage allowed
   
   model_sequential %>% compile(
