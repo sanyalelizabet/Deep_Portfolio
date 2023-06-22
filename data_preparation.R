@@ -100,9 +100,14 @@ calculate_na_stats <- function(returns) {
     return(na_stats)  # No missing values, return NULL
   }
   
+  if (length(na_indices) == 1) {
+    na_stats <- rbind(na_stats, c(na_indices, 1))
+    return(na_stats)
+  }
+  
   first_index <- na_indices[1]
   count <- 1
-  
+  prev_index <- first_index  # Initialize prev_index
   for (i in 2:length(na_indices)) {
     curr_index <- na_indices[i]
     
@@ -128,23 +133,32 @@ impute_returns <- function(returns) {
   if (is.null(na_stats)) {
     return(returns)  # No missing values, return original vector
   }
-  
   imputed_returns <- returns
-  for (i in 1:nrow(na_stats)) {
-    first_index <- na_stats[i, 1]
-    occurences_end <- na_stats[nrow(na_stats), 2]
-    last_index <- na_stats[nrow(na_stats), 1]
+  first_index <- na_stats[1, 1]
+  occurences_end <- na_stats[nrow(na_stats), 2]
+  last_index <- na_stats[nrow(na_stats), 1]
     
-    if (first_index != 1) {
-      temp <- imputed_returns[1:(last_index-1)]
+  if (first_index != 1) {
+      
+      temp <- imputed_returns[first_index:(last_index-1)]
       temp[is.na(temp)] <- 0
-      imputed_returns[1:(last_index-1)] <- temp
+      imputed_returns[first_index:(last_index-1)] <- temp
+      
+      if ((last_index + occurences_end-1) != length(imputed_returns)) {
+        imputed_returns[(last_index + 1):length(imputed_returns)] <- 0
+      }
+    } else {
+      if (nrow(na_stats)!=1) {
+      start <- na_stats[1, 2]
+      temp <- imputed_returns[start:(last_index-1)]
+      temp[is.na(temp)] <- 0
+      imputed_returns[start:(last_index-1)] <- temp
+      
+      if ((last_index + occurences_end-1) != length(imputed_returns)) {
+        imputed_returns[(last_index + 1):length(imputed_returns)] <- 0
+            }
+        }
     }
-    
-    if ((last_index + occurences_end-1) != length(imputed_returns)) {
-      imputed_returns[(last_index + 1):length(imputed_returns)] <- 0
-    }
-  }
   
   return(imputed_returns)
 }

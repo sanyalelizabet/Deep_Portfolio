@@ -40,19 +40,49 @@ sharpe_ratio_loss <- function(y_ret, y_pred) {
 
 
 
+sharpe_ratio_loss_na_check <- function(y_ret, y_pred) {
+  
+  
+  backend <-  backend()
+  
+  has_nan <- tf$equal(y_ret, y_ret) 
+  has_nan <-  k_cast_to_floatx(has_nan)
+  
+  nan_ret_to_zero <- tf$where(tf$equal(y_ret, y_ret),y_ret ,tf$zeros_like(y_ret) )
+  
+  nan_w_to_zero <- tf$math$multiply(y_pred, has_nan)
+  
+  nan_w_to_zero <- nan_w_to_zero/k_sum(nan_w_to_zero)
+  
+  weighted_returns <-  nan_ret_to_zero*nan_w_to_zero
+  portfolio_return <- k_sum(weighted_returns, axis = 2)
+  
+  #print(y_ret)
+  #k_print_tensor(portfolio_return, "That returns of the batch portfolios")
+  
+  mean_return <- backend$mean(portfolio_return)
+  std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
+  
+  sharpe_ratio <- (mean_return+backend$constant(0.001)) / (std_return)
+  
+  desired_shape <- shape(12, 1)
+  repeated_tensor <- tf$fill(dims = desired_shape, value = -sharpe_ratio)
+  
+  return(-repeated_tensor)
+}
 
 #not working.. 
-mean_variance_utility <- function(y_ret, y_pred) {
-  backend <-  backend()
-  weighted_returns <-  y_ret*y_pred
-  portfolio_return <- k_sum(weighted_returns, axis = 2)
+#mean_variance_utility <- function(y_ret, y_pred) {
+ # backend <-  backend()
+#  weighted_returns <-  y_ret*y_pred
+ # portfolio_return <- k_sum(weighted_returns, axis = 2)
   #k_print_tensor(portfolio_return, "That returns of the batch portfolios")
-  mean_return <- backend$mean(portfolio_return)
-  var_return <- backend$std(portfolio_return)^2
-  power_utility <- mean_return-1/2*(var)
+  #mean_return <- backend$mean(portfolio_return)
+  #var_return <- backend$std(portfolio_return)^2
+  #power_utility <- mean_return-1/2*(var)
   
-  return(-mean_variance_utility)
-}
+#  return(-mean_variance_utility)
+#}
 
 
 print_layer_lin_output <- function(x) {

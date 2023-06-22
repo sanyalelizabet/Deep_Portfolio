@@ -31,7 +31,7 @@ source("model_construction.R", local = knitr::knit_global())
 ```{r, warning=FALSE, message=FALSE}
 
 load("~/R/Test_GPU/data_ml.RData")
-
+load("~/R/Deep_Portfolio/data_all_wide_imputed.RData")
 data_ml <- data_ml %>% select(-R3M_Usd,-R6M_Usd,-R12M_Usd)
 stock_ids <- levels(as.factor(data_ml$stock_id)) 
 stock_days <- data_ml %>%                        
@@ -55,87 +55,15 @@ returns_all <- data_all_stocks$returns_winsorized
 returns_all_test <- data_all_stocks$returns
 
 
-data_all_wide_imputed <- impute_rowwise(data_all_wide, FUN=median,features)
-```
+#data_all_wide_imputed <- impute_rowwise(data_all_wide, FUN=median,features)
 
-
-
-# Backtesting with predefined stocks:
-```{r}
-
- 
-backtest <- function(t, data_short_wide, returns, simple=TRUE, window="fixed") {
-  
-  if (window=="fixed"){
-
-    window_data <- as.matrix(data_short_wide[(t-training_window+1):t,])
-    window_returns <- as.matrix(returns[(t-training_window+1):t,])
-    val_window_data <- as.matrix(data_short_wide[t:(t+val_window),])
-    val_returns <- as.matrix(returns[t:(t+val_window),])
-    data_predict <- as.matrix(data_short_wide[(t+1+val_window),])
-    
-  } else {
-   
-    first <- (training_window+t)%%6+1
-    window_data <- as.matrix(data_short_wide[first:(t+training_window),])
-    print("that is ")
-    print(t)
-    print("thats number of training data")
-    print(nrow(window_data))
-    window_returns <- as.matrix(returns[first:(t+training_window),])
-    val_window_data <- as.matrix(data_short_wide[t:(t+val_window),])
-    val_returns <- as.matrix(returns[t:(t+val_window),])
-    data_predict <- as.matrix(data_short_wide[(t+1+val_window),])
-    
-    
-  }
-
-    
-     early_stopping <- callback_early_stopping(monitor = c("val_loss"),
-                                               patience = 50,
-                                               restore_best_weights = TRUE
-                                               )
-
-    lr_callback <- callback_reduce_lr_on_plateau( monitor = 'val_loss',
-                                                  factor = 0.01, 
-                                                  patience = 10,
-                                                  verbose = 1,
-                                                  mode = 'auto'
-                                                  )
-    if (simple==TRUE){
-       
-      model %>% fit( x = window_data, 
-                                   y = window_returns, 
-                                   epochs = 50, 
-                                   batch_size = 12, 
-                                   verbose = 2,  
-                                   validation_data = list(val_window_data, val_returns),
-                                   shuffle=FALSE,
-                                   callbacks = list(early_stopping, lr_callback)
-                   )
-    
-    prediction_w_t <- predict(model, data_predict)
-      
-    } else {
-     
-    model %>% fit( x = list(window_data, window_data), 
-                                   y = window_returns, 
-                                   epochs = 150, 
-                                   batch_size = 12, 
-                                   verbose = 2,  
-                                   validation_data = list(list(val_window_data, val_window_data), val_returns),
-                                   shuffle=FALSE,
-                                   callbacks = list(early_stopping, lr_callback)
-                   )
-    
-    prediction_w_t <- predict(model, list(data_predict,data_predict))
-    }
-                              
-  return(prediction_w_t)
-}
+returns_all_imputed <- returns_all %>% mutate_all(impute_returns) 
 
 
 ```
+
+
+
 
 
 ## Backtesting with predefined stocks:
@@ -153,19 +81,16 @@ activation_conc <- "swish"
 learning_rate <-0.1
 activation_nl_ii <-"tanh"
 units_choice <- 4
+   
 
-#model <- build_simple_model(rate, units_choice, activation_nl_i, learning_rate, activation_nl_ii, data_short_wide )
-model <- build_model(rate, units_choice, activation_nl_i,activation_conc,learning_rate, activation_nl_ii, data_short_wide)
-    
-
-testing_periods <-  nrow(data_short_wide)-training_window-val_window
+testing_periods <-  12
 #max possible nrow(data_short_wide)-training_window-val_window
 
 t_values <- seq(60, 60+testing_periods)
 
-backtest_results <- map(t_values, backtest, data_short_wide, returns, FALSE, "expand")
+backtest_results <- map(t_values, backtest, data_short_wide, returns_short, simple=FALSE, window="expand", TRUE)
 
-test_sample_returns <- as.matrix(returns_short_test[(training_window+val_window+1):(training_window+val_window+testing_periods+1),])
+test_sample_returns <- as.matrix(returns_short[(training_window+val_window+1):(training_window+val_window+testing_periods+1),])
 weights_sample_returns <- do.call(rbind, lapply(backtest_results, unlist))
 test_pf_ret <- rowSums(weights_sample_returns *  test_sample_returns)
 
@@ -174,5 +99,10 @@ test_pf_ret <- rowSums(weights_sample_returns *  test_sample_returns)
 mean(test_pf_ret, na.rm = TRUE)/sd(test_pf_ret, na.rm = TRUE)
 ```
 
+## Backtesting with all stocks avaible
+
+```{r}
+backtest_results_all <- map(t_values, backtest, data_all_wide_imputed, returns_all_imputed, simple=TRUE, window="expand",stocks_preselected= FALSE)
+```
 
 

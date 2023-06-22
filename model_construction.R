@@ -1,4 +1,4 @@
-build_model <- function(rate, units_choice, activation_nl_i,activation_conc,learning_rate, activation_nl_ii, data ){
+build_model <- function(n_stocks, rate, units_choice, activation_nl_i,activation_conc,learning_rate, activation_nl_ii, data, loss=sharpe_ratio_loss ){
   
   
   num_features <- ncol(data)
@@ -36,14 +36,14 @@ build_model <- function(rate, units_choice, activation_nl_i,activation_conc,lear
     layer_batch_normalization(scale = TRUE, center = TRUE)
   #Define complete model
   output <- layer_3 %>%
-    layer_dense(units = length(stock_ids_short), 
+    layer_dense(units = n_stocks, 
                 activation = "linear",
-                kernel_initializer = initializer_glorot_uniform(seed=145))  %>% 
+                kernel_initializer = initializer_glorot_uniform(seed=144))  %>% 
     layer_lambda(w_full_constraint_leverage) # full investment constrain with no leverage allowed
   
   model <- keras_model(inputs = list(layer_1, layer_2), outputs = output)
   model %>% compile(
-    loss = sharpe_ratio_loss,
+    loss = loss,
     optimizer = optimizer_nadam(learning_rate = learning_rate,clipnorm=1)
     
   )
@@ -53,7 +53,7 @@ build_model <- function(rate, units_choice, activation_nl_i,activation_conc,lear
 
 
 
-build_simple_model <- function(rate, units_choice, activation_nl_i, learning_rate, activation_nl_ii, data ){
+build_simple_model <- function(n_stocks, rate, units_choice, activation_nl_i, learning_rate, activation_nl_ii, data, loss=sharpe_ratio_loss ){
   
   
   num_features <- ncol(data)
@@ -69,13 +69,13 @@ build_simple_model <- function(rate, units_choice, activation_nl_i, learning_rat
                 activation = activation_nl_ii,
                 kernel_initializer = initializer_glorot_uniform(seed = 142)) %>%
     layer_batch_normalization(scale = TRUE, center = TRUE) %>%
-    layer_dense(units = length(stock_ids_short),
+    layer_dense(units = n_stocks,
                 activation = "linear",
                 kernel_initializer = initializer_glorot_uniform(seed = 143)) %>%
     layer_lambda(w_full_constraint_leverage) # Full investment constraint with no leverage allowed
   
   model_sequential %>% compile(
-    loss = sharpe_ratio_loss,
+    loss = loss,
     optimizer = optimizer_nadam(learning_rate = learning_rate, clipnorm = 1)
   )
     
