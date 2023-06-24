@@ -65,9 +65,8 @@ backtest <- function(t, data_wide, returns, simple=FALSE, window="fixed", stocks
                                                 patience = 10,
                                                 verbose = 1,
                                                 mode = 'auto'
-                                                
-                                                
   )
+  
   if (stocks_preselected==TRUE) {
     if (anyNA(returns)) {
       stop("NA values found in returns. Please ensure returns are complete.")
@@ -85,12 +84,14 @@ backtest <- function(t, data_wide, returns, simple=FALSE, window="fixed", stocks
    
   if (simple==TRUE){
    
-    model <- build_simple_model(n_stock_selected, rate, units_choice, activation_nl_i, learning_rate, activation_nl_ii, data_wide,loss_fun )
+    model <- build_simple_model(n_stock_selected, rate, units_choice, 
+                                activation_nl_i, learning_rate, activation_nl_ii, 
+                                data_wide,loss_fun )
     
     model %>% fit( x = window_data, 
                    y = window_returns, 
-                   epochs = 50, 
-                   batch_size = 12, 
+                   epochs = epochs, 
+                   batch_size = batch_size, 
                    verbose = 2,  
                    validation_data = list(val_window_data, val_returns),
                    shuffle=FALSE,
@@ -101,12 +102,14 @@ backtest <- function(t, data_wide, returns, simple=FALSE, window="fixed", stocks
     
   } else {
     
-    model <- build_model(n_stock_selected, rate, units_choice, activation_nl_i,activation_conc,learning_rate, activation_nl_ii, data_wide,loss_fun)
+    model <- build_model(n_stock_selected, rate, units_choice, 
+                         activation_nl_i,activation_conc,learning_rate, 
+                         activation_nl_ii, data_wide,loss_fun)
     
     model %>% fit( x = list(window_data, window_data), 
                    y = window_returns, 
                    epochs = epochs, 
-                   batch_size = 12, 
+                   batch_size = batch_size, 
                    verbose = 2,  
                    validation_data = list(list(val_window_data, val_window_data), val_returns),
                    shuffle=FALSE,
@@ -120,7 +123,8 @@ backtest <- function(t, data_wide, returns, simple=FALSE, window="fixed", stocks
     return(prediction_w_t)
     
   } else {
-    return_data_predict <- as.matrix(returns[(t+1+val_window),])
+    return_data_predict <- as.matrix(returns[(t+val_window),])
+    print(dim(return_data_predict))
     stocks_available  <- !is.na(c(NA, 1,1))
     
     prediction_w_t_availaible <- stocks_available*prediction_w_t
