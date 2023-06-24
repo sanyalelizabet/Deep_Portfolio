@@ -7,102 +7,132 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-packages <- c("reticulate", "tensorflow", "abind", "keras", "xts", "PerformanceAnalytics", "kableExtra", "lubridate", "tidyverse", "purrr")
+packages <- c("reticulate", "tensorflow", "abind", "keras", 
+              "xts", "PerformanceAnalytics", "kableExtra", 
+              "lubridate", "tidyverse", "purrr")
 require(packages)
-library(reticulate)
-library(tensorflow)
-library(abind)
-library(keras)
-library(xts)
-library(PerformanceAnalytics)
-library(kableExtra)
-library(lubridate)
-library(tidyverse)
-library(purrr)
-library(dplyr)
-library(tidyr)
-library(rlang)
-library(furrr)
+pacman::p_load(reticulate, tensorflow, abind, keras, xts, PerformanceAnalytics, kableExtra, lubridate, tidyverse, purrr, dplyr, tidyr, rlang, furrr)
 source("custom_nn_keras.R", local = knitr::knit_global())
 source("data_preparation.R", local = knitr::knit_global())
 source("model_construction.R", local = knitr::knit_global())
+source("backtest.R", local = knitr::knit_global())
 ```
 
+```{r}
+tf_config <- list(
+    experimental.memory_growth = TRUE,
+    experimental.allocator_type = "cuda_malloc_async"
+)
+tf$config$list_physical_devices()
+
+```
+
+## Data Preparation
 ```{r, warning=FALSE, message=FALSE}
 
 load("~/R/Test_GPU/data_ml.RData")
-load("~/R/Deep_Portfolio/data_all_wide_imputed.RData")
 data_ml <- data_ml %>% select(-R3M_Usd,-R6M_Usd,-R12M_Usd)
 stock_ids <- levels(as.factor(data_ml$stock_id)) 
 stock_days <- data_ml %>%                        
     group_by(stock_id) %>% summarize(nb = n()) 
 stock_ids_short <- stock_ids[which(stock_days$nb == max(stock_days$nb))] 
-dates <- unique(data_short$date) 
+
 features <- colnames(data_ml[3:95]) 
 
-
-data_predef_stocks <- process_data(data=data_ml, stock_id_column="stock_id",feature_names=NULL,  label_name="R1M_Usd", use_max_stock_days=TRUE)
+#Preparing data with stock that have full data (no missing hours)
+data_predef_stocks <- process_data(data=data_ml, 
+                                   stock_id_column="stock_id",
+                                   feature_names=NULL,  
+                                   label_name="R1M_Usd", 
+                                   use_max_stock_days=TRUE)
 
 data_short_wide <- data_predef_stocks$features_wide
 returns_short <- data_predef_stocks$returns_winsorized
 returns_short_test <- data_predef_stocks$returns_short_test
 
-
-data_all_stocks <- process_data(data=data_ml, stock_id_column="stock_id",feature_names=NULL,  label_name="R1M_Usd", use_max_stock_days=FALSE)
+#Preparing data with all stock available
+data_all_stocks <- process_data(data=data_ml, 
+                                stock_id_column="stock_id",
+                                feature_names=NULL,  
+                                label_name="R1M_Usd", 
+                                use_max_stock_days=FALSE)
 
 data_all_wide <- data_all_stocks$features_wide
 returns_all <- data_all_stocks$returns_winsorized
 returns_all_test <- data_all_stocks$returns
 
-
 #data_all_wide_imputed <- impute_rowwise(data_all_wide, FUN=median,features)
-
+load("~/R/Deep_Portfolio/data_all_wide_imputed.RData")
 returns_all_imputed <- returns_all %>% mutate_all(impute_returns) 
 
 
 ```
-
-
-
-
-
-## Backtesting with predefined stocks:
-
+## Defining Training-Testing-Validation Window 
 ```{r}
-
-
 num_features <- ncol(data_short_wide)
 val_window <- 60
 training_window <- 60
+first_test <- val_window + training_window
+testing_period_len <-  24
+testing_periods_seq <- seq(training_window, training_window+testing_period_len)
+end_test <- first_test+testing_period_len
+#max possible nrow(data_short_wide)-training_window-val_window
 
-rate <- 0.1
+```
+## Neural Network Parameters
+```{r}
 activation_nl_i <- "sigmoid"
 activation_conc <- "swish"
 learning_rate <-0.1
 activation_nl_ii <-"tanh"
-units_choice <- 4
-   
+units_choice <- 1
+epochs <- 300
+rate <- 0.1
+batch_size <- 12
+```
+## Backtesting with predefined stocks with SR loss:
 
-testing_periods <-  12
-#max possible nrow(data_short_wide)-training_window-val_window
+```{r}
+backtest_res_fixed_ret_sr <- map(testing_periods_seq, backtest, data_short_wide, returns_short, 
+                        simple=FALSE, window="expand", stocks_preselected=TRUE, 
+                        transaction_cost=FALSE)
 
-t_values <- seq(60, 60+testing_periods)
+test_sample_returns <- as.matrix(returns_short[first_test:end_test,])
+weights_fixed_sr_expand <- do.call(rbind, lapply(backtest_results, unlist))
+test_pf_ret_fixed_sr_expand <- rowSums(weights_fixed_ret_sr *  test_sample_returns)
 
-backtest_results <- map(t_values, backtest, data_short_wide, returns_short, simple=FALSE, window="expand", TRUE)
+#Metrics:
+mean(weights_fixed_sr_expand)/sd(weights_fixed_sr_expand)
+```
 
-test_sample_returns <- as.matrix(returns_short[(training_window+val_window+1):(training_window+val_window+testing_periods+1),])
+
+## Backtesting with predefined stocks with transaction cost adjusted SR loss:
+```{r}
+
+backtest_results <- map(testing_periods_seq, backtest, data_short_wide, returns_short, 
+                        simple=FALSE, window="expand", stocks_preselected=TRUE, 
+                        transaction_cost=TRUE)
+
+test_sample_returns <- as.matrix(returns_short[first_test:end_test,])
 weights_sample_returns <- do.call(rbind, lapply(backtest_results, unlist))
 test_pf_ret <- rowSums(weights_sample_returns *  test_sample_returns)
 
 #Metrics:
-
-mean(test_pf_ret, na.rm = TRUE)/sd(test_pf_ret, na.rm = TRUE)
+mean(test_pf_ret)/sd(test_pf_ret)
 ```
 
 ## Backtesting with all stocks avaible
-
 ```{r}
-backtest_results_all <- map(t_values, backtest, data_all_wide_imputed, returns_all_imputed, simple=TRUE, window="expand",stocks_preselected= FALSE)
+backtest_results_all <- map(testing_periods_seq, backtest, data_all_wide_imputed, 
+                            returns_all_imputed, simple=TRUE, window="expand",
+                            stocks_preselected= FALSE)
+
+weights_sample_returns_all <- do.call(rbind, lapply(backtest_results_all, unlist)) 
+
+test_sample_returns_all <- as.matrix(returns_all_imputed[first_test:end_test,])
+test_sample_returns_all[is.na(test_sample_returns_all)] <- 0
+test_pf_ret_all <- rowSums(weights_sample_returns_all *  test_sample_returns_all)
+mean(test_pf_ret_all, na.rm = TRUE)/sd(test_pf_ret_all, na.rm = TRUE)
 ```
 
 
