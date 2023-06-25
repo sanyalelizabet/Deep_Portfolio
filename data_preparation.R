@@ -53,19 +53,19 @@ impute_rowwise <- function(data, FUN = median, feature_prefixes) {
 #'
 #' @param data The input data frame
 #' @param stock_id_column The column name for stock IDs
-#' @param feature_names A vector of feature column names (default: NULL)
+#' @param feature_names A vector of feature column names (default: NULL). All columns except label will be used
 #' @param label_name The column name for the label
-#' @param use_max_stock_days Boolean indicating whether to use stock IDs with maximum days (default: TRUE)
+#' @param use_full_data_stocks Boolean indicating whether to use only stock IDs with full data (default: TRUE)
 #'
 #' @return A list containing processed data: features_wide, returns_winsorized, returns, dates
-process_data <- function(data, stock_id_column, feature_names = NULL, label_name, use_max_stock_days = TRUE) {
+process_data <- function(data, stock_id_column, feature_names = NULL,
+                         label_name, use_full_data_stocks = TRUE) {
   stock_ids <- levels(as.factor(data[[stock_id_column]]))
   
-  if (use_max_stock_days) {
+  if (use_full_data_stocks) {
     stock_days <- data %>%
       group_by(!!sym(stock_id_column)) %>%
       summarize(nb = n())
-    
     stock_ids_short <- stock_ids[which(stock_days$nb == max(stock_days$nb))]
   } else {
     stock_ids_short <- stock_ids

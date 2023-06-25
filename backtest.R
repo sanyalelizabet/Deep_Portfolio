@@ -42,7 +42,6 @@ backtest <- function(t, data_wide, returns, simple=FALSE,
       window_data <- as.matrix(data_wide[(t-training_window+1):t,])
       window_returns <- as.matrix(returns[(t-training_window+1):t,])
       val_window_data <- as.matrix(data_wide[t:(t+val_window-1),])
-      print(dim(val_window_data))
       val_returns <- as.matrix(returns[t:(t+val_window-1),])
       data_predict <- as.matrix(data_wide[(t+val_window),])
     
@@ -59,7 +58,7 @@ backtest <- function(t, data_wide, returns, simple=FALSE,
   }
   
   
-  early_stopping <- callback_early_stopping(monitor = c("val_loss"),
+  early_stopping <- callback_early_stopping(monitor = c('val_loss'),
                                             patience = 50,
                                             restore_best_weights = TRUE
                                             )
@@ -72,6 +71,7 @@ backtest <- function(t, data_wide, returns, simple=FALSE,
                                               )
   
   if (stocks_preselected==TRUE) {
+    
     if (anyNA(returns)) {
       stop("NA values found in returns. Please ensure returns are complete.")
     }
@@ -84,6 +84,10 @@ backtest <- function(t, data_wide, returns, simple=FALSE,
     
   } else {
     loss_fun <- sharpe_ratio_loss_na_check
+    
+    if (transaction_cost==TRUE){
+      loss_fun <- sharpe_ratio_tc_loss_na_check
+    }
   }
    
   if (simple==TRUE){
@@ -106,7 +110,10 @@ backtest <- function(t, data_wide, returns, simple=FALSE,
     
   } else {
     
-    model <- build_model(n_stock_selected, rate, units_choice, activation_nl_i,activation_conc,learning_rate,activation_nl_ii, data_wide,loss_fun)
+    model <- build_model(n_stock_selected, rate, units_choice, 
+                         activation_nl_i,activation_conc,
+                         learning_rate,activation_nl_ii, 
+                         data_wide,loss_fun)
     
     model %>% fit( x = list(window_data, window_data), 
                    y = window_returns, 
@@ -126,13 +133,14 @@ backtest <- function(t, data_wide, returns, simple=FALSE,
     
   } else {
     return_data_predict <- as.matrix(returns[(t+val_window),])
-    print(dim(return_data_predict))
-    stocks_available  <- !is.na(c(NA, 1,1))
-    
-    prediction_w_t_availaible <- stocks_available*prediction_w_t
-  
-    prediction_w_t_ <- prediction_w_t_availaible/sum(prediction_w_t_availaible)
-    return(prediction_w_t_)
+    stocks_available  <- is.na(return_data_predict)
+   
+    prediction_w_t[stocks_available] <- 0
+    prediction_w_t <- prediction_w_t/sum(prediction_w_t)
+    prediction_w_t[prediction_w_t > 0.1] <- 0.1
+    prediction_w_t[prediction_w_t < -0.1] <- -0.1
+    prediction_w_t <- prediction_w_t/sum(prediction_w_t)
+    return(prediction_w_t)
   }
   
   

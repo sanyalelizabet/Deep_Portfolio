@@ -7,11 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-packages <- c("reticulate", "tensorflow", "abind", "keras", 
-              "xts", "PerformanceAnalytics", "kableExtra", 
-              "lubridate", "tidyverse", "purrr")
-require(packages)
-pacman::p_load(reticulate, tensorflow, abind, keras, xts, PerformanceAnalytics, kableExtra, lubridate, tidyverse, purrr, dplyr, tidyr, rlang, furrr)
+pacman::p_load(reticulate, tensorflow, abind, keras, xts, PerformanceAnalytics, kableExtra, lubridate, tidyverse, purrr, dplyr, tidyr, rlang, furrr,kerastuneR, lmtest,sandwich)
 source("custom_nn_keras.R", local = knitr::knit_global())
 source("data_preparation.R", local = knitr::knit_global())
 source("model_construction.R", local = knitr::knit_global())
@@ -21,12 +17,15 @@ source("backtest.R", local = knitr::knit_global())
 # Data Preparation
 ```{r, warning=FALSE, message=FALSE}
 load("~/R/Test_GPU/data_ml.RData")
+inputlist <- c("F-F_Research_Data_5_Factors_2x3_CSV")
+#FFdownload::FFdownload(output_file = "FF.RData",exclude_daily=TRUE,inputlist=inputlist)
+load("FF.RData")
+
 data_ml <- data_ml %>% select(-R3M_Usd,-R6M_Usd,-R12M_Usd)
 stock_ids <- levels(as.factor(data_ml$stock_id)) 
 stock_days <- data_ml %>%                        
     group_by(stock_id) %>% summarize(nb = n()) 
 stock_ids_short <- stock_ids[which(stock_days$nb == max(stock_days$nb))] 
-
 features <- colnames(data_ml[3:95]) 
 
 #Preparing data with stock that have full data (no missing hours)
@@ -34,7 +33,7 @@ data_predef_stocks <- process_data(data=data_ml,
                                    stock_id_column="stock_id",
                                    feature_names=NULL,  
                                    label_name="R1M_Usd", 
-                                   use_max_stock_days=TRUE)
+                                   use_full_data_stocks=TRUE)
 
 data_short_wide <- data_predef_stocks$features_wide
 returns_short <- data_predef_stocks$returns_winsorized
@@ -45,7 +44,7 @@ data_all_stocks <- process_data(data=data_ml,
                                 stock_id_column="stock_id",
                                 feature_names=NULL,  
                                 label_name="R1M_Usd", 
-                                use_max_stock_days=FALSE)
+                                use_full_data_stocks=FALSE)
 
 data_all_wide <- data_all_stocks$features_wide
 returns_all <- data_all_stocks$returns_winsorized
@@ -55,6 +54,10 @@ returns_all_test <- data_all_stocks$returns
 load("~/R/Deep_Portfolio/data_all_wide_imputed.RData")
 returns_all_imputed <- returns_all %>% mutate_all(impute_returns) 
 
+FF_factors <- FFdata$`x_F-F_Research_Data_5_Factors_2x3`$monthly$Temp2 %>%
+  timetk::tk_tbl(rename_index="date") %>% 
+  mutate(across(Mkt.RF:RF,~./100),date=as.Date(date, frac=1)) %>%
+  filter(date >= as.Date(min(data_all_stocks$dates)), date <= as.Date(max(data_all_stocks$dates)))
 
 ```
 # Definition of The Training-Testing-Validation Sample Periods: 
@@ -95,12 +98,8 @@ backtest_res_predef_ret_sr <- map(testing_periods_seq, backtest, data_short_wide
                         simple=FALSE, window="expand", stocks_preselected=TRUE, 
                         transaction_cost=FALSE)
 
-test_sample_returns <- as.matrix(returns_short[first_test:end_test,])
-weights_predef_sr_expand <- do.call(rbind, lapply(backtest_res_predef_ret_sr, unlist))
-test_pf_ret_predef_sr_expand <- rowSums(weights_predef_sr_expand *  test_sample_returns)
-
-#Metrics:
-mean(weights_predef_sr_expand)/sd(weights_predef_sr_expand)
+performance_predef_sr <- generate_performance_metrics(backtest_res_predef_ret_sr, TRUE, returns_all_imputed)
+performance_predef_sr
 ```
 
 
@@ -111,27 +110,34 @@ backtest_predef_res_sr_tc <- map(testing_periods_seq, backtest, data_short_wide,
                                  returns_short,simple=FALSE, window="expand", 
                                  stocks_preselected=TRUE, transaction_cost=TRUE)
 
-test_sample_returns <- as.matrix(returns_short[first_test:end_test,])
-weights_predef_sr_tc_expand <- do.call(rbind, lapply(backtest_results, unlist))
-test_pf_ret_predef_sr_tc_expand <- rowSums(weights_predef_sr_tc_expand *  test_sample_returns)
-
-#Metrics:
-mean(test_pf_ret_predef_sr_tc_expand)/sd(test_pf_ret_predef_sr_tc_expand)
+performance_predef_sr_tc <- generate_performance_metrics(backtest_predef_res_sr_tc, TRUE, returns_all_imputed)
+performance_predef_sr_tc
 ```
-
-
 ## Backtesting with all stocks avaible with SR loss:
 ```{r}
 backtest_all_res_sr <- map(testing_periods_seq, backtest, data_all_wide_imputed, 
                                  returns_all_imputed,simple=FALSE, window="expand", 
                                  stocks_preselected=FALSE, transaction_cost=FALSE)
 
-weights_all_res_sr <- do.call(rbind, lapply(backtest_all_res_sr, unlist)) 
+performance_all_sr <- generate_performance_metrics(backtest_all_res_sr, FALSE, returns_all_imputed)
+performance_all_sr
+```
 
-test_sample_returns_all <- as.matrix(returns_all_imputed[first_test:end_test,])
-test_sample_returns_all[is.na(test_sample_returns_all)] <- 0
-test_pf_all_res_sr <- rowSums(weights_all_res_sr *  test_sample_returns_all)
-mean(test_pf_all_res_sr)/sd(test_pf_all_res_sr)
+## Backtesting with all stocks avaible with SR loss transaction adjusted:
+```{r}
+backtest_all_res_sr_tc <- map(testing_periods_seq, backtest, data_all_wide_imputed, 
+                                 returns_all_imputed,simple=FALSE, window="expand", 
+                                 stocks_preselected=FALSE, transaction_cost=TRUE)
+
+performance_all_sr_tc <- generate_performance_metrics(backtest_all_res_sr_tc, FALSE, returns_all_imputed)
+performance_all_sr_tc
+performance_all_sr
 ```
 
 
+
+
+
+
+
+training according to optimum weights
