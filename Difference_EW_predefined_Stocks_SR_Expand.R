@@ -4,6 +4,20 @@ dates_testing <- sort(data_predef_stocks$dates)[first_test:end_test]
 ew_deltas_predef_sr_expand_df$dates <- as.Date(dates_testing, format = "%Y-%m-%d")
 
 ew_deltas_predef_sr_expand_long <- pivot_longer(ew_deltas_predef_sr_expand_df, cols = -dates, names_to = "Stock", values_to = "Delta")
+# Convert weights_predef_sr_tc_expand to a data frame
+ew_deltas_predef_sr_tc_expand_df <- as.data.frame(weights_predef_sr_tc_expand)
+
+# Set column names of ew_deltas_predef_sr_tc_expand_df to match returns_short
+colnames(ew_deltas_predef_sr_tc_expand_df) <- colnames(returns_short)
+
+# Get the testing dates
+dates_testing <- sort(data_predef_stocks$dates)[first_test:end_test]
+
+# Convert dates_testing to Date format
+ew_deltas_predef_sr_tc_expand_df$dates <- as.Date(dates_testing, format = "%Y-%m-%d")
+
+# Pivot the data frame from wide to long format
+ew_deltas_predef_sr_tc_expand_long <- pivot_longer(ew_deltas_predef_sr_tc_expand_df, cols = -dates, names_to = "Stock", values_to = "Delta")
 
 
 library(shiny)

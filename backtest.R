@@ -31,8 +31,12 @@
 #'
 #' @details The `backtest` function performs backtesting of a trading strategy using a specified model. It takes as input the current time index, historical data, and returns. The function builds a model based on the specified parameters and performs training using the training data. The trained model is then used to predict weights for the next time period. The function returns the predicted weights.
 #'
-backtest <- function(t, data_wide, returns, simple=FALSE, window="fixed", stocks_preselected=TRUE, transaction_cost=FALSE) {
+backtest <- function(t, data_wide, returns, simple=FALSE,
+                     window="fixed", stocks_preselected=TRUE, 
+                     transaction_cost=FALSE) {
+  
   n_stock_selected <- ncol(returns)
+  
   if (window=="fixed"){
       
       window_data <- as.matrix(data_wide[(t-training_window+1):t,])
@@ -58,14 +62,14 @@ backtest <- function(t, data_wide, returns, simple=FALSE, window="fixed", stocks
   early_stopping <- callback_early_stopping(monitor = c("val_loss"),
                                             patience = 50,
                                             restore_best_weights = TRUE
-  )
+                                            )
   
   lr_callback <- callback_reduce_lr_on_plateau( monitor = 'val_loss',
                                                 factor = 0.01, 
                                                 patience = 10,
                                                 verbose = 1,
-                                                mode = 'auto'
-  )
+                                              mode = 'auto'
+                                              )
   
   if (stocks_preselected==TRUE) {
     if (anyNA(returns)) {
@@ -91,7 +95,7 @@ backtest <- function(t, data_wide, returns, simple=FALSE, window="fixed", stocks
     model %>% fit( x = window_data, 
                    y = window_returns, 
                    epochs = epochs, 
-                   batch_size = batch_size, 
+                   batch_size = 12, 
                    verbose = 2,  
                    validation_data = list(val_window_data, val_returns),
                    shuffle=FALSE,
@@ -102,14 +106,12 @@ backtest <- function(t, data_wide, returns, simple=FALSE, window="fixed", stocks
     
   } else {
     
-    model <- build_model(n_stock_selected, rate, units_choice, 
-                         activation_nl_i,activation_conc,learning_rate, 
-                         activation_nl_ii, data_wide,loss_fun)
+    model <- build_model(n_stock_selected, rate, units_choice, activation_nl_i,activation_conc,learning_rate,activation_nl_ii, data_wide,loss_fun)
     
     model %>% fit( x = list(window_data, window_data), 
                    y = window_returns, 
                    epochs = epochs, 
-                   batch_size = batch_size, 
+                   batch_size = 12, 
                    verbose = 2,  
                    validation_data = list(list(val_window_data, val_window_data), val_returns),
                    shuffle=FALSE,
