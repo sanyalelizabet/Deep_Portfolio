@@ -22,7 +22,7 @@ build_model <- function(n_stocks, rate, units_choice, activation_nl_i, activatio
   layer_1 <- layer_input(shape = c(num_features), 
                          name = "Linear_Input")
   layer_linear <- layer_1 %>%
-    layer_dense(units = 100 * units_choice,
+    layer_dense(units = 50 * units_choice,
                 activation = "linear",
                 kernel_initializer = initializer_glorot_uniform(seed = 144), 
                 name = "Linear_Layer") %>% 
@@ -33,15 +33,13 @@ build_model <- function(n_stocks, rate, units_choice, activation_nl_i, activatio
   layer_2 <- layer_input(shape = c(num_features), 
                          name = "Non_Linear_Input")
   layer_nonlinear <- layer_2 %>%
-    layer_dense(units = units_choice * 100,
+    layer_dense(units = units_choice * 25,
                 activation = activation_nl_i,
                 kernel_initializer = initializer_glorot_uniform(seed = 144),
                 name = "Non_Linear_Layer_I") %>%
     layer_dropout(rate, 
-                  name = "Drop_Out_Layer_Non_Lin") %>% 
-    layer_lambda(row_scale, 
-                 name = "Cross-sectional_Normalisation_Layer_II") %>%
-   layer_dense(units = units_choice * 2,
+                  name = "Drop_Out_Layer_Non_Lin") %>% #layer_lambda(row_scale, name = "Cross-sectional_Normalisation_Layer_II") %>%
+   layer_dense(units = units_choice * 10,
                 activation = activation_nl_ii,
                kernel_initializer = initializer_glorot_uniform(seed = 144),
                name = "Non_Linear_Layer_II") %>% 
@@ -57,15 +55,15 @@ build_model <- function(n_stocks, rate, units_choice, activation_nl_i, activatio
     layer_dense(units = units_choice,
                 activation = activation_conc,
                 kernel_initializer = initializer_glorot_uniform(seed = 144), 
-                name = "Concatenated_Layer_Non_Linear_III") 
+                name = "Concatenated_Layer_Non_Linear_III") %>% layer_lambda(row_scale)
   
   # Define complete model
   output <- layer_3 %>%
     layer_dense(units = n_stocks,
                 activation = "linear",
                 kernel_initializer = initializer_glorot_uniform(seed = 144),
-                name = "Linear_Output_Layer") %>%
-    layer_lambda(w_full_constraint_leverage,
+                name = "Linear_Output_Layer") %>% layer_lambda(row_scale) %>%
+       layer_lambda(w_full_constraint_leverage,
                  name = "Weights_Normalisation_Under_Constraints")  # Full investment constraint with no leverage allowed
   
   model <- keras_model(inputs = list(layer_1, layer_2), 
@@ -73,7 +71,7 @@ build_model <- function(n_stocks, rate, units_choice, activation_nl_i, activatio
                        name = "Deep_Portfolio_Model")
   model %>% compile(
     loss = loss,
-    optimizer = optimizer_rmsprop(learning_rate = learning_rate)
+    optimizer = optimizer_adam(learning_rate = learning_rate)
     )
   
   return(model)

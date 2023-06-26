@@ -12,6 +12,7 @@ source("custom_nn_keras.R", local = knitr::knit_global())
 source("data_preparation.R", local = knitr::knit_global())
 source("model_construction.R", local = knitr::knit_global())
 source("backtest.R", local = knitr::knit_global())
+source("performance_metrics.R", local = knitr::knit_global())
 ```
 
 # Data Preparation
@@ -62,11 +63,12 @@ FF_factors <- FFdata$`x_F-F_Research_Data_5_Factors_2x3`$monthly$Temp2 %>%
 ```
 # Definition of The Training-Testing-Validation Sample Periods: 
 ```{r}
+n_stock_selected <- length(stock_ids_short)
 num_features <- ncol(data_short_wide)
 val_window <- 60
 training_window <- 60
 first_test <- val_window + training_window
-testing_period_len <-  12
+testing_period_len <-  nrow(data_short_wide)-training_window-val_window
 testing_periods_seq <- seq(training_window, training_window+testing_period_len)
 end_test <- first_test+testing_period_len
 #max possible nrow(data_short_wide)-training_window-val_window
@@ -76,18 +78,19 @@ end_test <- first_test+testing_period_len
 ```{r}
 activation_nl_i <- "sigmoid"
 activation_conc <- "swish"
-learning_rate <-0.1
+learning_rate <-0.2
 activation_nl_ii <-"tanh"
-units_choice <- 1
-epochs <- 300
-rate <- 0.1
+units_choice <- 2
+epochs <- 100
+rate <- 0.01
 batch_size <- 12
+
 ```
 # NN with parallell NLinear and Linear Layers
 ```{r}
-illustration_model <- build_model(n_stock_selected, rate, units_choice, 
+illustration_model <- build_model(length(stock_ids_short), rate, units_choice, 
                          activation_nl_i,activation_conc,learning_rate, 
-                         activation_nl_ii, data_wide,sharpe_ratio_loss)
+                         activation_nl_ii, data_short_wide,sharpe_ratio_loss)
 summary(illustration_model)
 ```
 #Backtesting
@@ -98,7 +101,7 @@ backtest_res_predef_ret_sr <- map(testing_periods_seq, backtest, data_short_wide
                         simple=FALSE, window="expand", stocks_preselected=TRUE, 
                         transaction_cost=FALSE)
 
-performance_predef_sr <- generate_performance_metrics(backtest_res_predef_ret_sr, TRUE, returns_all_imputed)
+performance_predef_sr <- generate_performance_metrics(backtest_res_predef_ret_sr, TRUE, returns_short)
 performance_predef_sr
 ```
 
@@ -110,7 +113,7 @@ backtest_predef_res_sr_tc <- map(testing_periods_seq, backtest, data_short_wide,
                                  returns_short,simple=FALSE, window="expand", 
                                  stocks_preselected=TRUE, transaction_cost=TRUE)
 
-performance_predef_sr_tc <- generate_performance_metrics(backtest_predef_res_sr_tc, TRUE, returns_all_imputed)
+performance_predef_sr_tc <- generate_performance_metrics(backtest_predef_res_sr_tc, TRUE, returns_short)
 performance_predef_sr_tc
 ```
 ## Backtesting with all stocks avaible with SR loss:

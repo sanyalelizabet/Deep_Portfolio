@@ -34,6 +34,16 @@
 backtest <- function(t, data_wide, returns, simple=FALSE,
                      window="fixed", stocks_preselected=TRUE, 
                      transaction_cost=FALSE) {
+  # Parameter Validation
+  stopifnot(is.numeric(t),
+            t >= 1 && t <= nrow(data_wide),
+            is.data.frame(data_wide),
+            is.data.frame(returns),
+            window %in% c("fixed", "expand"),
+            is.logical(simple),
+            is.logical(stocks_preselected),
+            is.logical(transaction_cost)
+  )
   
   n_stock_selected <- ncol(returns)
   
@@ -129,12 +139,14 @@ backtest <- function(t, data_wide, returns, simple=FALSE,
   }
  
   if (stocks_preselected==TRUE) {
+    # If stocks are preselected, the predicted weights are returned as is.
     return(prediction_w_t)
     
   } else {
     return_data_predict <- as.matrix(returns[(t+val_window),])
     stocks_available  <- is.na(return_data_predict)
-   
+    # If stocks are not preselected, any stocks with unavailable returns are assigned weights of 0.
+    # The predicted weights are then normalized and clipped between -0.1 and 0.1.
     prediction_w_t[stocks_available] <- 0
     prediction_w_t <- prediction_w_t/sum(prediction_w_t)
     prediction_w_t[prediction_w_t > 0.1] <- 0.1

@@ -12,12 +12,16 @@
 
 w_full_constraint <- function(x) {
   backend <-  backend()
-  #x <- x+1/tf$cast(tf$shape(x)[2], dtype=tf$float32) as change relative ot ew  
+  #x <- x+1/tf$cast(tf$shape(x)[2], dtype=tf$float32)   
   constant_two <- (k_sum(x, axis = 2L, keepdims = TRUE)+backend$epsilon())
   output <- tf$divide(x, constant_two)
   
   return(output)
 }
+
+
+
+
 
 #' Full Constraint Leverage Function
 #'
@@ -31,14 +35,15 @@ w_full_constraint <- function(x) {
 #' The resulting tensor contains the output after applying full constraint leverage to the input tensor.
 #'
 w_full_constraint_leverage <- function(x) {
-  backend <-  backend()
-  #x <- x+1/tf$cast(tf$shape(x)[2], dtype=tf$float32) as change relative ot ew     
-  constant <- (k_sum(x, axis = 2, keepdims = TRUE)+backend$epsilon())
-  output_norm <- tf$divide(x, constant)
-  output_clipped <- tf$clip_by_value(output_norm, -0.1, 0.1)
-  constant_two <- (k_sum(output_clipped, axis = 2, keepdims = TRUE)+backend$epsilon())
-  output <- tf$divide(output_clipped, constant_two)
-  return(output)
+  negative_w <- tf$math$less_equal(x, tf$constant(0, dtype = tf$float32))  
+  scaler_neg <- tf$cast(tf$shape(x)[2], dtype = tf$float32) * 1.5
+  neg_w_scaled <-  tf$divide(tf$tanh(x), scaler_neg) 
+  masked_neg_w <- tf$where(negative_w, x, tf$zeros_like(x)) 
+  scaler_pos <- tf$cast(tf$shape(x)[2], dtype = tf$float32) * 0.8
+  pos_w_scaled <-  tf$divide(tf$tanh(x), scaler_pos) 
+  constrained_w <- tf$where(negative_w, neg_w_scaled, pos_w_scaled)
+  
+  return(constrained_w)
 }
  
 #' Sharpe Ratio Loss Function
@@ -108,12 +113,21 @@ row_scale <- function(x) {
   row_mean <- tf$reduce_mean(x, 
                              axis = 1L, 
                              keepdims = TRUE)
+ 
   row_std <- tf$math$reduce_std(x, 
                                 axis = 1L,
                                 keepdims = TRUE)
   scaled_tensor <- (x - row_mean) / row_std
   return(scaled_tensor)
 }
+
+
+row_l2 <- function(x) {
+  x <- k_l2_normalize(x, axis = 1)
+  return(x)
+}
+
+
 
 #' Sharpe Ratio Loss Function with Transaction Cost
 #'
@@ -155,7 +169,7 @@ sharpe_ratio_tc_loss <- function(y_ret, y_pred) {
                                            )
   turn <-k_sum(tf$abs(weights_to_rebalance - prior_weights_stride),
                axis = 2)/k_sum(prior_weights_stride, axis = 2)
-  
+  k_print_tensor(turn)
   transaction_cost <- 0.005*k_mean(turn)
   
   mean_return <- backend$mean(portfolio_return)
