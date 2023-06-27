@@ -35,12 +35,16 @@ w_full_constraint <- function(x) {
 #' The resulting tensor contains the output after applying full constraint leverage to the input tensor.
 #'
 w_full_constraint_leverage <- function(x) {
+  
   negative_w <- tf$math$less_equal(x, tf$constant(0, dtype = tf$float32))  
-  scaler_neg <- tf$cast(tf$shape(x)[2], dtype = tf$float32) * 1.5
-  neg_w_scaled <-  tf$divide(tf$tanh(x), scaler_neg) 
-  masked_neg_w <- tf$where(negative_w, x, tf$zeros_like(x)) 
-  scaler_pos <- tf$cast(tf$shape(x)[2], dtype = tf$float32) * 0.8
-  pos_w_scaled <-  tf$divide(tf$tanh(x), scaler_pos) 
+ 
+  masked_neg_w <- tf$where(negative_w, x, tf$zeros_like(x))
+  masked_pos_w <- tf$where(negative_w, tf$zeros_like(x), x)
+ 
+  pos_w_scaled <-  1.2*tf$tanh(masked_pos_w)
+  neg_w_scaled <- -0.2*tf$tanh(masked_neg_w)
+  pos_w_scaled <- tf$divide(pos_w_scaled, k_sum(tf$tanh(masked_pos_w), axis = 2L, keepdims = TRUE))
+  neg_w_scaled <- tf$divide(neg_w_scaled, k_sum(tf$tanh(masked_neg_w), axis = 2L, keepdims = TRUE))
   constrained_w <- tf$where(negative_w, neg_w_scaled, pos_w_scaled)
   
   return(constrained_w)
@@ -59,10 +63,13 @@ w_full_constraint_leverage <- function(x) {
 #'
 sharpe_ratio_loss <- function(y_ret, y_pred) {
   backend <-  backend()
+ 
   weighted_returns <-  y_ret*y_pred
+  
   portfolio_return <- k_sum(weighted_returns, axis = 2L)
   
   mean_return <- backend$mean(portfolio_return)
+  
   std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
  
   sharpe_ratio <- (mean_return+backend$constant(0.001)) / (std_return)
@@ -169,7 +176,7 @@ sharpe_ratio_tc_loss <- function(y_ret, y_pred) {
                                            )
   turn <-k_sum(tf$abs(weights_to_rebalance - prior_weights_stride),
                axis = 2)/k_sum(prior_weights_stride, axis = 2)
-  k_print_tensor(turn)
+ 
   transaction_cost <- 0.005*k_mean(turn)
   
   mean_return <- backend$mean(portfolio_return)

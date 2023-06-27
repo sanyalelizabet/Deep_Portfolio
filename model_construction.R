@@ -38,7 +38,7 @@ build_model <- function(n_stocks, rate, units_choice, activation_nl_i, activatio
                 kernel_initializer = initializer_glorot_uniform(seed = 144),
                 name = "Non_Linear_Layer_I") %>%
     layer_dropout(rate, 
-                  name = "Drop_Out_Layer_Non_Lin") %>% #layer_lambda(row_scale, name = "Cross-sectional_Normalisation_Layer_II") %>%
+                  name = "Drop_Out_Layer_Non_Lin") %>%
    layer_dense(units = units_choice * 10,
                 activation = activation_nl_ii,
                kernel_initializer = initializer_glorot_uniform(seed = 144),
@@ -64,7 +64,7 @@ build_model <- function(n_stocks, rate, units_choice, activation_nl_i, activatio
                 kernel_initializer = initializer_glorot_uniform(seed = 144),
                 name = "Linear_Output_Layer") %>% layer_lambda(row_scale) %>%
        layer_lambda(w_full_constraint_leverage,
-                 name = "Weights_Normalisation_Under_Constraints")  # Full investment constraint with no leverage allowed
+                 name = "Weights_Normalisation_Under_Constraints") 
   
   model <- keras_model(inputs = list(layer_1, layer_2), 
                        outputs = output, 

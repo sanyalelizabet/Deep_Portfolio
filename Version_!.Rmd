@@ -68,7 +68,7 @@ num_features <- ncol(data_short_wide)
 val_window <- 60
 training_window <- 60
 first_test <- val_window + training_window
-testing_period_len <-  nrow(data_short_wide)-training_window-val_window
+testing_period_len <- nrow(data_short_wide)-training_window-val_window
 testing_periods_seq <- seq(training_window, training_window+testing_period_len)
 end_test <- first_test+testing_period_len
 #max possible nrow(data_short_wide)-training_window-val_window
@@ -82,7 +82,7 @@ learning_rate <-0.2
 activation_nl_ii <-"tanh"
 units_choice <- 2
 epochs <- 100
-rate <- 0.01
+rate <- 0.1
 batch_size <- 12
 
 ```
@@ -109,9 +109,9 @@ performance_predef_sr
 ## Backtesting with predefined stocks with transaction cost adjusted SR loss:
 ```{r}
 
-backtest_predef_res_sr_tc <- map(testing_periods_seq, backtest, data_short_wide, 
-                                 returns_short,simple=FALSE, window="expand", 
-                                 stocks_preselected=TRUE, transaction_cost=TRUE)
+backtest_predef_res_sr_tc <- map(testing_periods_seq, backtest, data_short_wide, returns_short,simple=FALSE, 
+                                 window="expand",stocks_preselected=TRUE,
+                                 transaction_cost=TRUE)
 
 performance_predef_sr_tc <- generate_performance_metrics(backtest_predef_res_sr_tc, TRUE, returns_short)
 performance_predef_sr_tc
