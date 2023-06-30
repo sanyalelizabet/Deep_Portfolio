@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load(reticulate, tensorflow, abind, keras, xts, PerformanceAnalytics, kableExtra, lubridate, tidyverse, purrr, dplyr, tidyr, rlang, furrr,kerastuneR, lmtest,sandwich)
+pacman::p_load(reticulate, tensorflow, abind, keras, xts, PerformanceAnalytics, kableExtra, lubridate, tidyverse, purrr, dplyr, tidyr, rlang, furrr,kerastuneR, lmtest,sandwich, gridExtra)
 source("custom_nn_keras.R", local = knitr::knit_global())
 source("data_preparation.R", local = knitr::knit_global())
 source("model_construction.R", local = knitr::knit_global())
@@ -77,12 +77,12 @@ end_test <- first_test+testing_period_len
 # Results of The Bayesian Optimisation: Neural Network Parameters
 ```{r}
 activation_nl_i <- "sigmoid"
-activation_conc <- "swish"
-learning_rate <-0.2
-activation_nl_ii <-"tanh"
-units_choice <- 2
-epochs <- 100
-rate <- 0.1
+activation_conc <- "tanh"
+learning_rate <-0.01
+activation_nl_ii <-"swish"
+units_choice <- 3
+epochs <- 200
+rate <- 0.01
 batch_size <- 12
 
 ```
@@ -134,9 +134,64 @@ backtest_all_res_sr_tc <- map(testing_periods_seq, backtest, data_all_wide_imput
 
 performance_all_sr_tc <- generate_performance_metrics(backtest_all_res_sr_tc, FALSE, returns_all_imputed)
 performance_all_sr_tc
-performance_all_sr
+
 ```
 
+# Backtesting with predefined stocks and Size and Momentum features:
+```{r}
+features_two <-c("Mkt_Cap_3M_Usd", "Mom_11M_Usd")
+
+data_2feat <- process_data(data=data_ml, 
+                                   stock_id_column="stock_id",
+                                   feature_names=features_two,  
+                                   label_name="R1M_Usd", 
+                                   use_full_data_stocks=TRUE)
+
+data_2short_wide <- data_2feat$features_wide
+returns_2short <- data_2feat$returns_winsorized
+returns_2short_test <- data_2feat$returns_short_test
+```
+# SR
+```{r}
+backtest_2predef <- map(testing_periods_seq, backtest, data_2short_wide, returns_2short, 
+                        simple=TRUE, window="expand", stocks_preselected=TRUE, 
+                        transaction_cost=FALSE)
+
+performance_2predef <- generate_performance_metrics(backtest_2predef, TRUE, returns_2short)
+performance_2predef
+```
+```{r}
+plot_cumulative(backtest_2predef, returns_2short)
+```
+
+# Backtesting with predefined stocks and Size and Momentum features with SR loss TC Adj.:
+```{r}
+backtest_2predef_ret_sr_tc <- map(testing_periods_seq, backtest, data_2short_wide, returns_2short, 
+                        simple=TRUE, window="expand", stocks_preselected=TRUE, 
+                        transaction_cost=TRUE)
+
+performance_3predef_sr_tc <- generate_performance_metrics(backtest_2predef_ret_sr_tc, TRUE, returns_2short)
+performance_3predef_sr_tc
+
+```
+
+
+```{r}
+plot_cumulative(backtest_2predef_ret_sr_tc, returns_2short)
+```
+
+## LSTM
+```{r}
+data_2short_lstm <- timeseries_dataset_from_array(data_2short_wide, returns_2short, 12)
+data_2short_lstm_feat<- data_2short_lstm$features
+data_2short_lstm_target <- data_2short_lstm$target 
+```
+
+```{r}
+illustration_model_lstm <- build_lstm_model(n_stocks, rate, units_choice,
+                               learning_rate, data_2short_lstm_feat, loss = sharpe_ratio_loss,timesteps=12)
+summary(illustration_model_lstm)
+```
 
 
 

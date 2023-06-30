@@ -88,7 +88,7 @@ process_data <- function(data, stock_id_column, feature_names = NULL,
   
   data_selection <- data %>%
     filter(!!sym(stock_id_column) %in% stock_ids_short) %>%
-    dplyr::select(!!sym(stock_id_column), !!sym(date_column), features, label_name) 
+    dplyr::select(!!sym(stock_id_column), !!sym(date_column), all_of(features),all_of(label_name) ) 
   
   features_wide <- data_selection %>%
     select(-!!sym(label_name)) %>%
@@ -200,4 +200,117 @@ impute_returns <- function(returns) {
     }
   
   return(imputed_returns)
+}
+
+#' Generate a time series dataset from an array.
+#'
+#' This function takes an array of data and its corresponding targets and generates a time series dataset with specified sequence length, stride, and sampling rate.
+#'
+#' @param data An array containing the input data.
+#' @param targets An array containing the target data.
+#' @param sequence_length The length of each sequence in the dataset.
+#' @param sequence_stride The stride between consecutive sequences.
+#' @param sampling_rate The rate at which the data is sampled.
+#' @param shuffle Logical value indicating whether to shuffle the generated sequences.
+#' @param seed An optional seed for the random shuffling process.
+#' @param start_index The index to start generating sequences from. If not provided, it defaults to 1.
+#' @param end_index The index to stop generating sequences at. If not provided, it defaults to the last index of the data.
+#'
+#' @return A list containing the generated features and target arrays.
+#'
+timeseries_dataset_from_array <- function(
+    data,
+    targets,
+    sequence_length,
+    sequence_stride = 1,
+    sampling_rate = 1,
+    shuffle = FALSE,
+    seed = NULL,
+    start_index = NULL,
+    end_index = NULL
+) {
+  if (!is.null(start_index)) {
+    if (start_index < 0) {
+      stop(paste("`start_index` must be 0 or greater. Received:", start_index))
+    }
+    if (start_index >= length(data)) {
+      stop(paste("`start_index` must be lower than the length of the data. Received:",
+                 start_index, "for data of length", length(data)))
+    }
+  }
+  
+  if (!is.null(end_index)) {
+    if (!is.null(start_index) && end_index <= start_index) {
+      stop(paste("`end_index` must be higher than `start_index`. Received:",
+                 "start_index =", start_index, "and end_index =", end_index))
+    }
+    if (end_index >= length(data)) {
+      stop(paste("`end_index` must be lower than the length of the data. Received:",
+                 "end_index =", end_index, "for data of length", length(data)))
+    }
+    if (end_index <= 0) {
+      stop(paste("`end_index` must be higher than 0. Received:", end_index))
+    }
+  }
+  
+  if (sampling_rate <= 0) {
+    stop(paste("`sampling_rate` must be higher than 0. Received:", sampling_rate))
+  }
+  if (sampling_rate >= length(data)) {
+    stop(paste("`sampling_rate` must be lower than the length of the data. Received:",
+               sampling_rate, "for data of length", length(data)))
+  }
+  if (sequence_stride <= 0) {
+    stop(paste("`sequence_stride` must be higher than 0. Received:", sequence_stride))
+  }
+  if (sequence_stride >= length(data)) {
+    stop(paste("`sequence_stride` must be lower than the length of the data. Received:",
+               sequence_stride, "for data of length", length(data)))
+  }
+  
+  if (is.null(start_index)) {
+    start_index <- 1
+  }
+  if (is.null(end_index)) {
+    end_index <- nrow(data)
+  }
+  
+  num_seqs <- end_index - start_index - (sequence_length * sampling_rate) + 1
+  
+  if (!is.null(targets)) {
+    num_seqs <- min(num_seqs, length(targets))
+  }
+  
+  if (num_seqs < 2147483647) {
+    index_dtype <- "integer32"
+  } else {
+    index_dtype <- "integer64"
+  }
+  
+  start_positions <- seq(1, num_seqs, by = sequence_stride)
+  if (shuffle) {
+    set.seed(seed)
+    start_positions <- sample(start_positions)
+  }
+  
+  sequence_length <- as.integer(sequence_length)
+  sampling_rate <- as.integer(sampling_rate)
+  
+  data_features <- lapply(start_positions, function(start) {
+    fin <- array(0, dim = c(1, sequence_length,ncol(data_2short_wide)))
+    end <- start + (sequence_length * sampling_rate) - sampling_rate
+    fin[1,,] <- as.matrix(data[start:end, ])
+  })
+  
+  target <- lapply(start_positions, function(start) {
+    fin <- array(0, dim = c(1, ncol(targets)))
+    end <- start + (sequence_length * sampling_rate) - sampling_rate
+    fin[1,] <- as.matrix(targets[end,])
+    fin
+  })
+  array_features <-abind::abind(data_features, along = 3)
+  array_features <- aperm(array_features, c(3, 1, 2))
+  array_target <-   abind::abind(target, along = 3)
+  array_target <- aperm(array_target, c(3, 1, 2))
+  return(list(features = array_features, target = array_target))
 }

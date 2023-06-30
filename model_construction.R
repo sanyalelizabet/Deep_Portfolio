@@ -22,7 +22,7 @@ build_model <- function(n_stocks, rate, units_choice, activation_nl_i, activatio
   layer_1 <- layer_input(shape = c(num_features), 
                          name = "Linear_Input")
   layer_linear <- layer_1 %>%
-    layer_dense(units = 50 * units_choice,
+    layer_dense(units = 12 * units_choice,
                 activation = "linear",
                 kernel_initializer = initializer_glorot_uniform(seed = 144), 
                 name = "Linear_Layer") %>% 
@@ -33,13 +33,13 @@ build_model <- function(n_stocks, rate, units_choice, activation_nl_i, activatio
   layer_2 <- layer_input(shape = c(num_features), 
                          name = "Non_Linear_Input")
   layer_nonlinear <- layer_2 %>%
-    layer_dense(units = units_choice * 25,
+    layer_dense(units = units_choice * 12,
                 activation = activation_nl_i,
                 kernel_initializer = initializer_glorot_uniform(seed = 144),
                 name = "Non_Linear_Layer_I") %>%
     layer_dropout(rate, 
                   name = "Drop_Out_Layer_Non_Lin") %>%
-   layer_dense(units = units_choice * 10,
+   layer_dense(units = units_choice * 6,
                 activation = activation_nl_ii,
                kernel_initializer = initializer_glorot_uniform(seed = 144),
                name = "Non_Linear_Layer_II") %>% 
@@ -52,7 +52,7 @@ build_model <- function(n_stocks, rate, units_choice, activation_nl_i, activatio
   
   # Building the rest of the model
   layer_3 <- concat %>%
-    layer_dense(units = units_choice,
+    layer_dense(units = units_choice*3,
                 activation = activation_conc,
                 kernel_initializer = initializer_glorot_uniform(seed = 144), 
                 name = "Concatenated_Layer_Non_Linear_III") %>% layer_lambda(row_scale)
@@ -71,7 +71,7 @@ build_model <- function(n_stocks, rate, units_choice, activation_nl_i, activatio
                        name = "Deep_Portfolio_Model")
   model %>% compile(
     loss = loss,
-    optimizer = optimizer_adam(learning_rate = learning_rate)
+    optimizer = optimizer_nadam(learning_rate = learning_rate)
     )
   
   return(model)
@@ -94,30 +94,52 @@ build_simple_model <- function(n_stocks, rate, units_choice, activation_nl1,
                                learning_rate, activation_nl2, data, loss = sharpe_ratio_loss) {
   
   num_features <- ncol(data)
-   # Building model
+  # Building model
   model_sequential <- keras_model_sequential()
   model_sequential %>%
-    layer_dense(units = units_choice * 3,
+    layer_dense(units = units_choice*25,
                 activation = activation_nl1,
                 kernel_initializer = initializer_glorot_uniform(seed = 144)
-                ) %>%
-    layer_dropout(rate) %>% 
-        layer_dense(units = units_choice * 2,
+    )  %>% 
+    layer_dense(units = units_choice*12,
                 activation = activation_nl2,
-                kernel_initializer = initializer_glorot_uniform(seed = 144)) %>%
-    layer_lambda(row_scale) %>%
-    layer_dense(units = units_choice * 2,
-                activation = "swish",
-                kernel_initializer = initializer_glorot_uniform(seed = 144)) %>%
-    layer_lambda(row_scale) %>%
-    layer_dense(units = n_stocks,
+                kernel_initializer = initializer_glorot_uniform(seed = 144)) %>% 
+    layer_dropout(rate)%>%
+    layer_dense(units = units_choice*5,
+                activation = "tanh",
+                kernel_initializer = initializer_glorot_uniform(seed = 144)) %>% 
+  layer_dense(units = n_stocks,
                 activation = "linear",
                 kernel_initializer = initializer_glorot_uniform(seed = 144)) %>%
+    layer_lambda(row_scale) %>%
     layer_lambda(w_full_constraint_leverage)  # Full investment constraint with no leverage allowed
   
   model_sequential %>% compile(
     loss = loss,
-    optimizer = optimizer_rmsprop(learning_rate = learning_rate)
+    optimizer = optimizer_nadam(learning_rate = learning_rate)
+  )
+  
+  return(model_sequential)
+}
+
+
+build_lstm_model <- function(n_stocks, rate, units_choice,
+                               learning_rate, data, loss = sharpe_ratio_loss,timesteps=12) {
+  
+  num_features <- dim(data)[3]
+  model_sequential <- keras_model_sequential() 
+  model_sequential%>%
+    layer_cudnn_lstm(units = units_choice*25, 
+               input_shape = c(timesteps, num_features),
+               return_sequences = FALSE
+    ) %>%
+    layer_dense(units = n_stocks,
+                activation = "linear")  %>%  layer_lambda(row_scale)  %>%
+    layer_lambda(w_full_constraint_leverage)
+  
+  model_sequential %>% compile(
+    loss = loss,
+    optimizer = optimizer_adam(learning_rate =as.double(learning_rate))
   )
   
   return(model_sequential)

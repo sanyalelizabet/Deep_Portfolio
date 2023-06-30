@@ -93,7 +93,7 @@ generate_performance_metrics <- function(backtest_object, stocks_preselected = T
   avg_return <- mean(pf_returns, na.rm = TRUE)
   sd_return <- sd(pf_returns, na.rm = TRUE)
   sharpe_ratio <- mean(pf_ret_excess) / sd_return
-  sharpe_ratio_tc_adj <-  pf_returns -0.005*calculate_turnover(weights, test_smpl_returns)) / sd_return
+  sharpe_ratio_tc_adj <-  (avg_return -0.005*calculate_turnover(weights, test_smpl_returns)) / sd_return
   max_weight <- max(weights)
   min_weight <- min(weights)
   avg_neg_weights <- mean(weights[weights < 0])
@@ -109,8 +109,10 @@ generate_performance_metrics <- function(backtest_object, stocks_preselected = T
   alpha_3F_p <- coeftest(lm(pf_ret_excess ~ Mkt.RF + SMB + HML,FF_factors_test), vcov = NeweyWest(lm(pf_ret_excess ~ Mkt.RF + SMB + HML,FF_factors_test)))[1, 4]
   
   table_data1 <- data.frame(
-    "Statistic" = c("Average return", "SD return", "Sharpe ratio","Sharpe ratio TC Adj.", "Average Turnover", "Max. weight",
-                    "Min. weight", "Avg. negative weights","Avg. positive weights",  "Avg. fraction of negative weights","Avg. fraction of positive weights" ),
+    "Statistic" = c("Average return", "SD return", "Sharpe ratio","Sharpe ratio TC Adj.", 
+                    "Average Turnover", "Max. weight",
+                    "Min. weight", "Avg. negative weights","Avg. positive weights",  
+                    "Avg. fraction of negative weights","Avg. fraction of positive weights" ),
     "Value" = c(avg_return, sd_return, sharpe_ratio,sharpe_ratio_tc_adj, turn, max_weight, min_weight,
                 avg_neg_weights, avg_pos_weights, frac_neg_weights,frac_pos_weights)
   )
@@ -165,11 +167,20 @@ plot_cumulative <- function(backtest_object, returns) {
     values_to = "CumulativeReturn"
   )
   
+  
+  # Create a data frame with portfolio returns
+  data_ret <- data.frame(Date = dates_testing,
+    PortfolioReturn = portfolio_returns,
+    EquallyWeightedReturn = ew_returns
+  )
+  
+  # Convert data to long format
+  data_ret_long <- tidyr::pivot_longer(data_ret, cols = c(PortfolioReturn, EquallyWeightedReturn), names_to = "Type", values_to = "Returns")
   # Plot the cumulative performance relative to equally weighted portfolio
-  plot <- ggplot(data_long, aes(x = Date, y = CumulativeReturn, color = Type)) +
+  plot1 <- ggplot(data_long, aes(x = Date, y = CumulativeReturn, color = Type)) +
     geom_line(size = 1) +
     scale_color_manual(values = c("#4C72B0", "#55A868"), labels = c("Equally Weighted Return", "Portfolio Return")) +
-    labs(x = "Date", y = "Cumulative Performance", title = "Cumulative Performance Relative to Equally Weighted Portfolio") +
+    labs(x = "Date", y = "Cumulative Performance", title = "Cumulative Performance") +
     theme_minimal() +
     theme(
       plot.title = element_text(size = 14, hjust = 0.5, face = "bold"),
@@ -181,5 +192,25 @@ plot_cumulative <- function(backtest_object, returns) {
       legend.text = element_text(size = 10),
       legend.position = "bottom"
     )
+  
+  # Create a histogram of portfolio and equally weighted returns
+  plot2 <- ggplot(data_ret_long, aes(x = Returns, fill = Type)) +
+    geom_histogram(binwidth = 0.02, alpha = 0.7) +
+    scale_fill_manual(values = c("#4C72B0", "#55A868"), labels = c("Portfolio Return", "Equally Weighted Return")) +
+    labs(x = "Returns", y = "Frequency", title = "Distribution of Returns") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 14, hjust = 0.5, face = "bold"),
+      axis.title.x = element_text(size = 12),
+      axis.title.y = element_text(size = 12),
+      axis.text.x = element_text(size = 10),
+      axis.text.y = element_text(size = 10),
+      legend.title = element_blank(),
+      legend.text = element_text(size = 10),
+      legend.position = "bottom"
+    )
+  
+ 
+  plot <- grid.arrange(plot1, plot2 + guides(fill = FALSE), ncol = 2)
   return(plot)
 }

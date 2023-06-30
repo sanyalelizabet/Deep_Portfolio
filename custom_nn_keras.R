@@ -20,9 +20,6 @@ w_full_constraint <- function(x) {
 }
 
 
-
-
-
 #' Full Constraint Leverage Function
 #'
 #' Applies full constraint leverage to the input weights tensor.
@@ -36,8 +33,8 @@ w_full_constraint <- function(x) {
 #'
 w_full_constraint_leverage <- function(x) {
   
-  negative_w <- tf$math$less_equal(x, tf$constant(0, dtype = tf$float32))  
- 
+  negative_w <- tf$math$less_equal(x, tf$constant(0, dtype = tf$float32))
+  
   masked_neg_w <- tf$where(negative_w, x, tf$zeros_like(x))
   masked_pos_w <- tf$where(negative_w, tf$zeros_like(x), x)
  
@@ -46,6 +43,7 @@ w_full_constraint_leverage <- function(x) {
   pos_w_scaled <- tf$divide(pos_w_scaled, k_sum(tf$tanh(masked_pos_w), axis = 2L, keepdims = TRUE))
   neg_w_scaled <- tf$divide(neg_w_scaled, k_sum(tf$tanh(masked_neg_w), axis = 2L, keepdims = TRUE))
   constrained_w <- tf$where(negative_w, neg_w_scaled, pos_w_scaled)
+  
   
   return(constrained_w)
 }
@@ -71,13 +69,12 @@ sharpe_ratio_loss <- function(y_ret, y_pred) {
   mean_return <- backend$mean(portfolio_return)
   
   std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
- 
   sharpe_ratio <- (mean_return+backend$constant(0.001)) / (std_return)
   
-  desired_shape <- shape(batch_size, 1)
-  repeated_tensor <- tf$fill(dims = desired_shape, value = -sharpe_ratio)
+  #desired_shape <- shape(batch_size, 1)
+  #repeated_tensor <- tf$fill(dims = desired_shape, value = -sharpe_ratio)
   
-  return(-repeated_tensor)
+  return(-sharpe_ratio)
 }
 
 #' Sharpe Ratio Loss Function with NaN Handling
@@ -93,6 +90,7 @@ sharpe_ratio_loss <- function(y_ret, y_pred) {
 #'
 sharpe_ratio_loss_na_check <- function(y_ret, y_pred) {
   backend <-  backend()
+ 
   has_nan <- tf$equal(y_ret, y_ret) 
   has_nan <-  k_cast_to_floatx(has_nan)
   
@@ -107,24 +105,28 @@ sharpe_ratio_loss_na_check <- function(y_ret, y_pred) {
   std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
   sharpe_ratio <- (mean_return+backend$constant(0.001)) / (std_return)
   
-  desired_shape <- shape(12, 1)
-  repeated_tensor <- tf$fill(dims = desired_shape, value = -sharpe_ratio)
+  #desired_shape <- shape(12, 1)
+  #repeated_tensor <- tf$fill(dims = desired_shape, value = -sharpe_ratio)
   
-  return(-repeated_tensor)
+  return(-sharpe_ratio)
 }
 
 #' Scale the rows of a matrix
 #'
 #' This code defines a function called row_scale that scales the rows of a matrix using a specified backend library, likely TensorFlow. 
 row_scale <- function(x) {
+ 
   row_mean <- tf$reduce_mean(x, 
                              axis = 1L, 
                              keepdims = TRUE)
+  
  
   row_std <- tf$math$reduce_std(x, 
                                 axis = 1L,
                                 keepdims = TRUE)
-  scaled_tensor <- (x - row_mean) / row_std
+ 
+  scaled_tensor <- tf$where(row_std > 0, (x - row_mean) / row_std, (x - row_mean))
+  #scaled_tensor <- (x - row_mean) / row_std
   return(scaled_tensor)
 }
 
@@ -183,9 +185,9 @@ sharpe_ratio_tc_loss <- function(y_ret, y_pred) {
   std_return <- backend$std(portfolio_return)+backend$constant(0.001)
   
   sharpe_ratio <- (mean_return-transaction_cost) / (std_return)
-  desired_shape <- shape(batch_size, 1)
-  
-  return(-tf$fill(dims = desired_shape, value = -sharpe_ratio))
+  #desired_shape <- shape(batch_size, 1)
+  #-tf$fill(dims = desired_shape, value = -sharpe_ratio)
+  return(-sharpe_ratio)
 }
 
 #' Sharpe Ratio Loss Function with Transaction Cost and Handling the Missing Stocks
@@ -239,26 +241,27 @@ sharpe_ratio_tc_loss_na_check  <- function(y_ret, y_pred) {
   std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
   sharpe_ratio <- sharpe_ratio <- (mean_return-transaction_cost) / (std_return)
   
-  desired_shape <- shape(12, 1)
-  
-  return(-tf$fill(dims = desired_shape, value = -sharpe_ratio))
+  #desired_shape <- shape(12, 1)
+  #-tf$fill(dims = desired_shape, value = -sharpe_ratio)
+  return(-sharpe_ratio)
 }
 
 
 
 print_layer_lin_output <- function(x) {
-  k_print_tensor(x, "That output linear")
+  k_print_tensor(x, "That output 1 linear")
   
   return(x)
 }
 print_layer_non_lin_output <- function(x) {
-  k_print_tensor(x, "That output non linear")
+  k_print_tensor(x, "That output non 2 linear")
   
   return(x)
 }
 
 print_layer_cont_output <- function(x) {
-  k_print_tensor(x, "That output contac")
+  print(x)
+  k_print_tensor(x, "That output 3")
   
   return(x)
 }
