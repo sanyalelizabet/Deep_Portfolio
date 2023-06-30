@@ -179,7 +179,7 @@ plot_cumulative <- function(backtest_object, returns) {
   # Plot the cumulative performance relative to equally weighted portfolio
   plot1 <- ggplot(data_long, aes(x = Date, y = CumulativeReturn, color = Type)) +
     geom_line(size = 1) +
-    scale_color_manual(values = c("#4C72B0", "#55A868"), labels = c("Equally Weighted Return", "Portfolio Return")) +
+    scale_color_manual(values = c("#4C72B0", "#55A868")) +
     labs(x = "Date", y = "Cumulative Performance", title = "Cumulative Performance") +
     theme_minimal() +
     theme(
@@ -194,9 +194,10 @@ plot_cumulative <- function(backtest_object, returns) {
     )
   
   # Create a histogram of portfolio and equally weighted returns
-  plot2 <- ggplot(data_ret_long, aes(x = Returns, fill = Type)) +
-    geom_histogram(binwidth = 0.02, alpha = 0.7) +
-    scale_fill_manual(values = c("#4C72B0", "#55A868"), labels = c("Portfolio Return", "Equally Weighted Return")) +
+  plot2 <- ggplot(data_ret_long, aes(x = Returns, fill = Type,  color=Type)) +
+    geom_histogram(aes(y=after_stat(density)), alpha=0.5, position="identity")+
+    geom_density(alpha=.2) + scale_color_manual(values = c("#4C72B0", "#55A868")) +
+    scale_fill_manual(values = c("#4C72B0", "#55A868")) +
     labs(x = "Returns", y = "Frequency", title = "Distribution of Returns") +
     theme_minimal() +
     theme(
