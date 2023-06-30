@@ -47,7 +47,7 @@ w_full_constraint_leverage <- function(x) {
   return(constrained_w)
 }
  
-<<<<<<< HEAD
+
 #' Sharpe Ratio Loss Function
 #'
 #' Calculates the Sharpe Ratio loss function given the predicted weights and observed returns.

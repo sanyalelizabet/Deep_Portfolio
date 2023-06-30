@@ -39,14 +39,14 @@ stock_ids_short <- stock_ids[which(stock_days$nb == max(stock_days$nb))]
 
 features <- colnames(data_ml[3:95]) 
 
-#Preparing data with stock that have full data (no missing hours)
+#Preparing data with stock that have full data (no missing values)
 data_predef_stocks <- process_data(data=data_ml, 
                                    stock_id_column="stock_id",
                                    feature_names=NULL,  
                                    label_name="R1M_Usd", 
                                    use_full_data_stocks=TRUE)
 
-
+#Short refers to shorter list of stocks - predefined list of stocks that have no missing values.
 data_short_wide <- data_predef_stocks$features_wide
 returns_short <- data_predef_stocks$returns_winsorized
 returns_short_test <- data_predef_stocks$returns_short_test
@@ -103,7 +103,6 @@ epochs <- 200
 rate <- 0.01
 batch_size <- 12
 
-
 ```
 # NN with Complex Model with NLinear and Linear Layers
 ```{r}
@@ -125,6 +124,10 @@ performance_predef_sr
 
 ```
 
+```{r}
+plot <-plot_cumulative(backtest_res_predef_ret_sr, returns_short)
+plot
+```
 
 ## Backtesting with predefined stocks with transaction cost adjusted SR loss:
 ```{r}
@@ -136,6 +139,12 @@ backtest_predef_res_sr_tc <- map(testing_periods_seq, backtest, data_short_wide,
 performance_predef_sr_tc <- generate_performance_metrics(backtest_predef_res_sr_tc, TRUE, returns_short)
 performance_predef_sr_tc
 ```
+```{r, warning=FALSE}
+plot <-plot_cumulative(backtest_predef_res_sr_tc, returns_short)
+plot
+```
+
+
 ## Backtesting with all stocks avaible with SR loss:
 ```{r}
 backtest_all_res_sr <- map(testing_periods_seq, backtest, data_all_wide_imputed, 
@@ -201,16 +210,24 @@ plot_cumulative(backtest_2predef_ret_sr_tc, returns_2short)
 ```
 
 ## LSTM
-```{r}
-
-```
-
-```{r}
+```{r, warning=FALSE}
 illustration_model_lstm <- build_lstm_model(n_stocks, rate, units_choice,
                                learning_rate, data_2short_lstm_feat, loss = sharpe_ratio_loss,timesteps=12)
 summary(illustration_model_lstm)
 ```
 
+```{r}
+backtest_predef_lstm_2feat <- map(testing_periods_seq, backtest, data_2short_wide, returns_2short, 
+                        model="lstm", window="expand", stocks_preselected=TRUE, 
+                        transaction_cost=FALSE)
+
+performance_predef_lstm_2feat <- generate_performance_metrics(backtest_predef_lstm_2feat, TRUE, returns_2short)
+performance_predef_lstm_2feat
+```
+
+```{r}
+plot_cumulative(backtest_predef_lstm_2feat, returns_2short)
+```
 
 
 

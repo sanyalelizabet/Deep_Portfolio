@@ -1,12 +1,12 @@
 # Define the UI
 library(shiny)
 library(lubridate)
-ew_deltas_predef_sr_expand_long <- pf_weights_longer(backtest_res_predef_ret_sr)
+ew_deltas_predef_sr_expand_long <- pf_weights_longer(backtest_predef_lstm_2feat)
 
-ew_deltas_predef_sr_tc_expand_long <-  pf_weights_longer(backtest_predef_res_sr_tc)
+ew_deltas_predef_sr_tc_expand_long <-  pf_weights_longer(backtest_res_predef_ret_sr)
 # Define the UI
 ui <- fluidPage(
-  titlePanel("Difference from Equal Weight"),
+  titlePanel("Difference"),
   sidebarLayout(
     sidebarPanel(
       sliderInput(
@@ -64,7 +64,7 @@ server <- function(input, output, session) {
            title = paste("Weights compared - SR Loss", selected_date())) +
       theme_minimal() +
       theme(axis.text.x = element_blank()) +
-      coord_cartesian(ylim = c(-0.01, 0.01), xlim = c(1, nrow(filtered_data)))
+      coord_cartesian(ylim = c(-0.05, 0.05), xlim = c(1, nrow(filtered_data)))
   })
   
   output$difference_plot2 <- renderPlot({
@@ -79,7 +79,7 @@ server <- function(input, output, session) {
            title = paste("Weights compared - SR Transaction Cost Adj. Loss", selected_date())) +
       theme_minimal() +
       theme(axis.text.x = element_blank()) +
-      coord_cartesian(ylim = c(-0.01, 0.01), xlim = c(1, nrow(filtered_data2)))
+      coord_cartesian(ylim = c(-0.05, 0.05), xlim = c(1, nrow(filtered_data2)))
   })
 }
 

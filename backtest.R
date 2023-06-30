@@ -41,7 +41,6 @@ backtest <- function(t, data_wide, returns, model="simple",
             is.data.frame(returns),
             window %in% c("fixed", "expand"),
             model %in% c("simple", "lstm", "complex"),
-            is.logical(simple),
             is.logical(stocks_preselected),
             is.logical(transaction_cost)
   )
@@ -120,7 +119,7 @@ backtest <- function(t, data_wide, returns, model="simple",
     
   } else {
     
-<<<<<<< HEAD
+
     if (model == "complex") {
     
     model <- build_model(n_stock_selected, rate, units_choice, 
@@ -139,7 +138,7 @@ backtest <- function(t, data_wide, returns, model="simple",
     )
     
     prediction_w_t <- predict(model, list(data_predict,data_predict))
-    } else {
+    } else {  #lstm
       data_lstm_train <- timeseries_dataset_from_array(window_data, window_returns, 12)
       lstm_features_train<- data_lstm_train$features
       lstm_features_target <- data_lstm_train$target 

@@ -297,7 +297,7 @@ timeseries_dataset_from_array <- function(
   sampling_rate <- as.integer(sampling_rate)
   
   data_features <- lapply(start_positions, function(start) {
-    fin <- array(0, dim = c(1, sequence_length,ncol(data_2short_wide)))
+    fin <- array(0, dim = c(1, sequence_length,ncol(data)))
     end <- start + (sequence_length * sampling_rate) - sampling_rate
     fin[1,,] <- as.matrix(data[start:end, ])
   })
