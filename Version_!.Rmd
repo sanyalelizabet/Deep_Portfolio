@@ -105,14 +105,26 @@ batch_size <- 12
 
 ```
 # NN with Complex Model with NLinear and Linear Layers
-```{r}
-illustration_model <- build_model(length(stock_ids_short), rate, units_choice, 
+```{r, warning=FALSE, message=FALSE}
+illustration_model_complex <- build_model(length(stock_ids_short), rate, units_choice, 
                          activation_nl_i,activation_conc,learning_rate, 
                          activation_nl_ii, data_short_wide,sharpe_ratio_loss)
-summary(illustration_model)
+summary(illustration_model_complex)
 ```
-#Backtesting
-## Backtesting with predefined stocks with SR loss:
+
+```{r, warning=FALSE}
+
+illustration_model_lstm <- build_lstm_model(n_stocks, rate, units_choice,
+                               learning_rate, data_2short_lstm_feat, loss = sharpe_ratio_loss,timesteps=12)
+summary(illustration_model_lstm)
+```
+
+
+
+#Backtesting with all features
+## Backtesting with predefined number of stocks
+### SR
+#### Complex
 
 ```{r}
 backtest_res_predef_ret_sr <- map(testing_periods_seq, backtest, data_short_wide, returns_short, 
@@ -129,7 +141,19 @@ plot <-plot_cumulative(backtest_res_predef_ret_sr, returns_short)
 plot
 ```
 
-## Backtesting with predefined stocks with transaction cost adjusted SR loss:
+#### LSTM
+
+```{r}
+backtest_predef_lstm <- map(testing_periods_seq, backtest, data_short_wide, returns_short, 
+                        model="lstm", window="expand", stocks_preselected=TRUE, 
+                        transaction_cost=FALSE)
+
+backtest_predef_lstm <- generate_performance_metrics(backtest_predef_lstm, TRUE, returns_short)
+backtest_predef_lstm
+```
+
+### SR TC Adj.
+#### Complex
 ```{r}
 
 backtest_predef_res_sr_tc <- map(testing_periods_seq, backtest, data_short_wide, returns_short,model="complex", 
@@ -145,7 +169,9 @@ plot
 ```
 
 
-## Backtesting with all stocks avaible with SR loss:
+##  Backtesting with all stocks avaible
+### SR loss:
+#### Complex NN
 ```{r}
 backtest_all_res_sr <- map(testing_periods_seq, backtest, data_all_wide_imputed, 
                                  returns_all_imputed,model="complex", window="expand", 
@@ -155,7 +181,8 @@ performance_all_sr <- generate_performance_metrics(backtest_all_res_sr, FALSE, r
 performance_all_sr
 ```
 
-## Backtesting with all stocks avaible with SR loss transaction adjusted:
+###  SR TC Adj.:
+#### Complex
 ```{r}
 backtest_all_res_sr_tc <- map(testing_periods_seq, backtest, data_all_wide_imputed, 
                                  returns_all_imputed,model="complex", window="expand", 
@@ -166,7 +193,8 @@ performance_all_sr_tc
 
 ```
 
-# Backtesting with predefined stocks and Size and Momentum features:
+# Backtesting Size and Momentum features:
+
 ```{r}
 features_two <-c("Mkt_Cap_3M_Usd", "Mom_11M_Usd")
 
@@ -194,27 +222,16 @@ plot_cumulative(backtest_2predef, returns_2short)
 ```
 
 # Backtesting with predefined stocks and Size and Momentum features with SR loss TC Adj.:
-```{r}
-backtest_2predef_ret_sr_tc <- map(testing_periods_seq, backtest, data_2short_wide, returns_2short, 
-                        model="simple", window="expand", stocks_preselected=TRUE, 
-                        transaction_cost=TRUE)
+## Backtesting with predefined number of stocks
+### SR
 
-performance_3predef_sr_tc <- generate_performance_metrics(backtest_2predef_ret_sr_tc, TRUE, returns_2short)
-performance_3predef_sr_tc
-
-```
+#### Complex
 
 
-```{r}
-plot_cumulative(backtest_2predef_ret_sr_tc, returns_2short)
-```
+#### Simple
 
-## LSTM
-```{r, warning=FALSE}
-illustration_model_lstm <- build_lstm_model(n_stocks, rate, units_choice,
-                               learning_rate, data_2short_lstm_feat, loss = sharpe_ratio_loss,timesteps=12)
-summary(illustration_model_lstm)
-```
+
+#### LSTM
 
 ```{r}
 backtest_predef_lstm_2feat <- map(testing_periods_seq, backtest, data_2short_wide, returns_2short, 
@@ -230,7 +247,46 @@ plot_cumulative(backtest_predef_lstm_2feat, returns_2short)
 ```
 
 
+### SR TC Adj.
+#### Simple
+
+```{r}
+backtest_2predef_ret_sr_tc <- map(testing_periods_seq, backtest, data_2short_wide, returns_2short, 
+                        model="simple", window="expand", stocks_preselected=TRUE, 
+                        transaction_cost=TRUE)
+
+performance_3predef_sr_tc <- generate_performance_metrics(backtest_2predef_ret_sr_tc, TRUE, returns_2short)
+performance_3predef_sr_tc
+
+```
+
+```{r}
+plot_cumulative(backtest_2predef_ret_sr_tc, returns_2short)
+```
+
+#### Complex
 
 
+#### LSTM
 
+## Backtesting with all stocks available
+### SR
+
+#### Complex
+
+
+#### Simple
+
+
+#### LSTM
+
+### SR TC Adj.
+
+#### Complex
+
+
+#### Simple
+
+
+#### LSTM
 training according to optimum weights

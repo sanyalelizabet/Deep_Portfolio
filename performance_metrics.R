@@ -148,8 +148,9 @@ plot_cumulative <- function(backtest_object, returns, stock_preselected=TRUE) {
   # Calculate cumulative returns for each asset
   cumulative_returns <- cumprod(1 + portfolio_returns)
   # Calculate equally weighted portfolio returns
+
   if (stock_preselected) {
-    equally_weights <- 1 / ncol(test_smpl_returns)
+equally_weights <- 1 / ncol(test_smpl_returns)
   } else {
     
     test_smpl_returns <- replace(test_smpl_returns, is.na(test_smpl_returns), 0)
