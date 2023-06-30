@@ -13,8 +13,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 
-library(kerastuneR)
-# Define dropout rate
+
+
 
 
 val_window <- 60
@@ -30,49 +30,47 @@ val_returns <- as.matrix(returns[training_window:(training_window+val_window),])
 num_features <- ncol(data_wide)
 
 
-build_model <- function(hp) {
+build_hp_tuning_model <- function(hp) {
   
-    layer <- hp$Choice('layer', c(1, 2))
+    layer <- hp$Choice('layer', c(1, 2,3,4))
     layer_1 <- layer_input(shape = c(num_features), 
                            name = "input_1")
-    units_choice <- hp$Choice("units", c(1,2,3,5,10, 25,50, 100))
+    units_choice <- hp$Choice("units", c(3,9,12, 21,36, 90))
    
     layer_linear <-  layer_1 %>% 
-                           layer_dense(units = units_choice*length(features), 
+                           layer_dense(units = units_choice, 
                                        activation = "linear",
                                        kernel_initializer = initializer_glorot_uniform(seed=145)
-                                    ) %>%
-                           layer_batch_normalization(scale = TRUE, center = TRUE)%>% layer_dropout(rate = 0.2)
+                                    ) %>% layer_lambda(row_scale)%>% layer_dropout(rate = 0.2)
 
 
-     layer_2 <- layer_input(shape = c(num_features), name = "input_2")
+  layer_2 <- layer_input(shape = c(num_features), name = "input_2")
      
-     layer_nonlinear <- layer_2 %>% layer_dense(units = units_choice*length(features),
+     layer_nonlinear <- layer_2 %>% layer_dense(units = units_choice,
                                                 activation = 'sigmoid',
                                                 kernel_initializer = initializer_glorot_uniform(seed=145)
-                                      )  %>% layer_batch_normalization(scale = TRUE, center = TRUE) %>% layer_dropout(rate = 0.2)
+                                      )  %>% layer_lambda(row_scale) %>%  layer_dropout(rate = 0.2)
                            
      
-     if (layer!=1) {
-       
-       layer_nonlinear <- layer_nonlinear %>%  layer_dense(units = units_choice*2,
-                                                           activation = 'tanh',
-                                                           kernel_initializer = initializer_glorot_uniform(seed=145)
-                                                           ) %>% layer_dropout(rate = 0.1)
-       
-     }
+      for (i in 1:layer) {
+    layer_nonlinear <- layer_nonlinear %>% 
+      layer_dense(units = ceiling(units_choice * 1/2),
+                  activation = 'tanh',
+                  kernel_initializer = initializer_glorot_uniform(seed = 145)) %>% 
+      layer_dropout(rate = 0.1) %>% layer_lambda(row_scale)
+  }
 
       concat <- layer_concatenate(list(layer_linear, layer_nonlinear))
       layer_3 <- concat %>%
-                    layer_dense(units = length(stock_ids_short)*units_choice, 
+                    layer_dense(units = units_choice * 1/3, 
                                 activation = 'swish', 
-                                kernel_initializer = initializer_glorot_uniform(seed=145))
+                                kernel_initializer = initializer_glorot_uniform(seed=145)) %>% layer_lambda(row_scale)
 
 # Define the rest of the model
         output <- layer_3 %>%
                  layer_dense(units = length(stock_ids_short), 
                              activation = "linear",
-                             kernel_initializer = "glorot_uniform")  %>% 
+                             kernel_initializer = "glorot_uniform")  %>%  layer_lambda(row_scale)%>%
           layer_lambda(w_full_constraint) # full investment constrain
 
           model <- keras_model(inputs = list(layer_1, layer_2), outputs = output)
@@ -80,7 +78,7 @@ build_model <- function(hp) {
 # Compile the model
            model %>% compile(
                loss = sharpe_ratio_loss,
-               optimizer = optimizer_adam(learning_rate = 0.005, clipnorm=0.01)
+               optimizer = optimizer_adam(learning_rate = 0.1)
                              )
   return(model)
  
@@ -88,15 +86,15 @@ build_model <- function(hp) {
 
 
 tuner <- kerastuneR::RandomSearch(
-    build_model,
+    build_hp_tuning_model,
     objective = 'val_loss',
     max_trials = 100,
     executions_per_trial = 1,
     directory = '~/R/ML_SR',
     project_name = 'B_opt_deep_portfolio')
 
-tuner %>% fit_tuner(list(window_data, window_data),window_returns, batch_size =25,
-                    epochs = 10, 
+tuner %>% fit_tuner(list(window_data, window_data),window_returns, batch_size =12,
+                    epochs = 30, 
                     validation_data = list(list(val_window_data, val_window_data),val_returns),  shuffle=FALSE)
 ```
 

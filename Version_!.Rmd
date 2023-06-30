@@ -86,7 +86,7 @@ rate <- 0.01
 batch_size <- 12
 
 ```
-# NN with parallell NLinear and Linear Layers
+# NN with Complex Model with NLinear and Linear Layers
 ```{r}
 illustration_model <- build_model(length(stock_ids_short), rate, units_choice, 
                          activation_nl_i,activation_conc,learning_rate, 
@@ -98,7 +98,7 @@ summary(illustration_model)
 
 ```{r}
 backtest_res_predef_ret_sr <- map(testing_periods_seq, backtest, data_short_wide, returns_short, 
-                        simple=FALSE, window="expand", stocks_preselected=TRUE, 
+                        model="complex", window="expand", stocks_preselected=TRUE, 
                         transaction_cost=FALSE)
 
 performance_predef_sr <- generate_performance_metrics(backtest_res_predef_ret_sr, TRUE, returns_short)
@@ -109,7 +109,7 @@ performance_predef_sr
 ## Backtesting with predefined stocks with transaction cost adjusted SR loss:
 ```{r}
 
-backtest_predef_res_sr_tc <- map(testing_periods_seq, backtest, data_short_wide, returns_short,simple=FALSE, 
+backtest_predef_res_sr_tc <- map(testing_periods_seq, backtest, data_short_wide, returns_short,model="complex", 
                                  window="expand",stocks_preselected=TRUE,
                                  transaction_cost=TRUE)
 
@@ -119,7 +119,7 @@ performance_predef_sr_tc
 ## Backtesting with all stocks avaible with SR loss:
 ```{r}
 backtest_all_res_sr <- map(testing_periods_seq, backtest, data_all_wide_imputed, 
-                                 returns_all_imputed,simple=FALSE, window="expand", 
+                                 returns_all_imputed,model="complex", window="expand", 
                                  stocks_preselected=FALSE, transaction_cost=FALSE)
 
 performance_all_sr <- generate_performance_metrics(backtest_all_res_sr, FALSE, returns_all_imputed)
@@ -129,7 +129,7 @@ performance_all_sr
 ## Backtesting with all stocks avaible with SR loss transaction adjusted:
 ```{r}
 backtest_all_res_sr_tc <- map(testing_periods_seq, backtest, data_all_wide_imputed, 
-                                 returns_all_imputed,simple=FALSE, window="expand", 
+                                 returns_all_imputed,model="complex", window="expand", 
                                  stocks_preselected=FALSE, transaction_cost=TRUE)
 
 performance_all_sr_tc <- generate_performance_metrics(backtest_all_res_sr_tc, FALSE, returns_all_imputed)
@@ -154,7 +154,7 @@ returns_2short_test <- data_2feat$returns_short_test
 # SR
 ```{r}
 backtest_2predef <- map(testing_periods_seq, backtest, data_2short_wide, returns_2short, 
-                        simple=TRUE, window="expand", stocks_preselected=TRUE, 
+                        model="simple", window="expand", stocks_preselected=TRUE, 
                         transaction_cost=FALSE)
 
 performance_2predef <- generate_performance_metrics(backtest_2predef, TRUE, returns_2short)
@@ -167,7 +167,7 @@ plot_cumulative(backtest_2predef, returns_2short)
 # Backtesting with predefined stocks and Size and Momentum features with SR loss TC Adj.:
 ```{r}
 backtest_2predef_ret_sr_tc <- map(testing_periods_seq, backtest, data_2short_wide, returns_2short, 
-                        simple=TRUE, window="expand", stocks_preselected=TRUE, 
+                        model="simple", window="expand", stocks_preselected=TRUE, 
                         transaction_cost=TRUE)
 
 performance_3predef_sr_tc <- generate_performance_metrics(backtest_2predef_ret_sr_tc, TRUE, returns_2short)
@@ -182,9 +182,7 @@ plot_cumulative(backtest_2predef_ret_sr_tc, returns_2short)
 
 ## LSTM
 ```{r}
-data_2short_lstm <- timeseries_dataset_from_array(data_2short_wide, returns_2short, 12)
-data_2short_lstm_feat<- data_2short_lstm$features
-data_2short_lstm_target <- data_2short_lstm$target 
+
 ```
 
 ```{r}

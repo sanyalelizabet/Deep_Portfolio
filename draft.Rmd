@@ -1,0 +1,314 @@
+---
+title: "Untitled"
+author: "Elizabet Sanyal"
+date: "2023-06-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+```{r}
+t <- 61
+
+
+      window_data <- as.matrix(data_short_wide[(t-training_window+1):t,])
+      window_returns <- as.matrix(returns_short[(t-training_window+1):t,])
+      val_window_data <- as.matrix(data_short_wide[t:(t+val_window-1),])
+      val_returns <- as.matrix(returns_short[t:(t+val_window-1),])
+      data_predict <- as.matrix(data_short_wide[(t+val_window),])
+n_stock_selected <- ncol(window_returns)
+
+
+
+model_sequential <- keras_model_sequential()
+  model_sequential  %>%
+    layer_dense(units = units_choice * 3,
+                activation = activation_nl_i,
+                kernel_initializer = initializer_glorot_uniform(seed = 145)) %>%
+    layer_dropout(rate = rate) %>%
+    layer_dense(units = units_choice * 2,
+                activation = activation_nl_ii,
+                kernel_initializer = initializer_glorot_uniform(seed = 142)) %>%
+    layer_batch_normalization(scale = TRUE, center = TRUE) %>%
+    layer_dense(units = n_stock_selected,
+                activation = "linear",
+                kernel_initializer = initializer_glorot_uniform(seed = 143)) %>%
+    layer_lambda(w_full_constraint_leverage) 
+  
+ model_sequential <-  model_sequential %>% compile(
+    loss = sharpe_ratio_tc_loss,
+    optimizer = optimizer_nadam(learning_rate = learning_rate, clipnorm = 1)
+  )
+ model_sequential %>% fit( x = window_data, 
+                   y = window_returns, 
+                   epochs = 1, 
+                   batch_size = 12, 
+                   verbose = 2,  
+                   validation_data = list(val_window_data, val_returns),
+                   shuffle=FALSE)
+    
+
+```
+
+
+```{r}
+y_ret <- matrix(c(0.1, 0.2, 0.1,-0.4, 0.5, 0.1, -0.6, 0.1, -0.1, 0.1, -0.2, 0.1), ncol = 2)
+tensor1 <- tf$constant(c(1, NA, 3, 4, 5))
+# Create the second tensor
+y_pred <- matrix(c(0, 0.5, 0.9,0.1, 0.9, 0.5, 1, 0.5, 0.1, 0.9, 0.1, 0.5), ncol = 2)
+# Create a placeholder tensor with shape (None, 5)
+
+ stocks_available  <- !is.na(c(NA, 1,1))
+    k_print_tensor(prediction_w_t)
+    prediction_w_t_availaible <- stocks_available*prediction_w_t
+    k_print_tensor(prediction_w_t_availaible)
+
+sharpe_ratio_tc_loss <- function(y_ret, y_pred) {
+  backend <-  backend()
+   y_ret <- tf$cast(y_ret, dtype=tf$float32)  
+   y_pred <- tf$cast(y_pred, dtype=tf$float32) 
+   weighted_returns <-  y_ret*y_pred
+  
+  portfolio_return <- k_sum(weighted_returns, axis = 2)
+  
+  y_pred_net <- y_ret + 1
+  prior_weights <- y_pred*y_pred_net
+
+  weights_to_rebalance <-   tf$strided_slice( y_pred,
+  begin = c(1L, 0L),
+  end = c(tf$shape(y_pred)[1], tf$shape(y_pred)[2]),
+  strides = c(1L, 1L) # Strides for each axis
+) 
+  prior_weights_stride <- tf$strided_slice(
+  prior_weights,
+  begin = c(0L, 0L),
+  end = c(tf$shape(y_pred)[1] - 1L, tf$shape(y_pred)[2]),
+  strides = c(1L, 1L)
+)
+  turn <-k_sum(tf$abs(weights_to_rebalance - prior_weights_stride),axis = 2)/k_sum(prior_weights_stride, axis = 2)
+   
+  transaction_cost <- 0.005*k_mean(turn)
+  
+  mean_return <- backend$mean(portfolio_return)
+  std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
+  
+  sharpe_ratio <- (mean_return-transaction_cost) / (std_return)
+  desired_shape <- shape(12, 1)
+  
+  return(-tf$fill(dims = desired_shape, value = -sharpe_ratio))
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+shara_check <- function(y_ret, y_pred) {
+  
+  
+  backend <-  backend()
+ 
+  has_nan <- tf$equal(y_ret, y_ret) 
+  has_nan <-  k_cast_to_floatx(has_nan)
+  
+  nan_ret_to_zero <- tf$where(tf$equal(y_ret, y_ret),y_ret ,tf$zeros_like(y_ret) )
+ 
+  nan_w_to_zero <- tf$math$multiply(y_pred, has_nan)
+  
+  nan_w_to_zero <- nan_w_to_zero/k_sum(nan_w_to_zero)
+   
+  weighted_returns <-  nan_ret_to_zero*nan_w_to_zero
+  portfolio_return <- k_sum(weighted_returns, axis = 2)
+  
+  #print(y_ret)
+  #k_print_tensor(portfolio_return, "That returns of the batch portfolios")
+  
+  mean_return <- backend$mean(portfolio_return)
+  std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
+  
+  sharpe_ratio <- (mean_return+backend$constant(0.001)) / (std_return)
+  
+  desired_shape <- shape(12, 1)
+  repeated_tensor <- tf$fill(dims = desired_shape, value = -sharpe_ratio)
+  
+  return(-repeated_tensor)
+}
+
+
+```
+
+
+```{r}
+turnover <- function(weights, asset_returns, t_oos){ 
+    turn <- 0
+    for(t in 2:length(t_oos)){
+        realised_returns <- returns %>% filter(date == t_oos[t]) %>% dplyr::select(-date)
+        prior_weights <- weights[t-1,] * (1 + realised_returns) # Before rebalancing
+        turn <- turn + apply(abs(weights[t,] - prior_weights/sum(prior_weights)),1,sum)
+    }
+    return(turn/(length(t_oos)-1))
+}
+```
+
+
+```{r}
+x <- tf$constant(matrix(c(-1, 1, 1,1, 1, 2, 1, -4, 1, 1, 0.1, -0.1), ncol = 3))
+y_pred <- tf$constant(matrix(c(0.1, 0.1, 0.1,0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1), ncol = 3))
+
+y_pred+1/  tf$cast(tf$shape(y_pred)[2], dtype=tf$float64)  
+
+
+batch_sizesss <- 1
+num_rosws <- 3
+num_columsns <- 2
+input_shape <- shape(c(batch_sizesss, num_rosws, num_columsns))
+#x <- tf$random$normal(shape = input_shape, dtype = tf$float32)
+row_scale <- function(x) {
+  
+  backend <-  backend()
+  row_mean <- tf$reduce_mean(x, axis = 1L, keepdims = TRUE)
+  row_std <- tf$math$reduce_std(x, axis = 1L, keepdims = TRUE)
+  scaled_tensor <- (x - row_mean) / row_std
+  return(scaled_tensor)
+}
+row_scale(x)
+```
+
+
+
+
+
+```{r}
+
+
+#not working.. 
+#mean_variance_utility <- function(y_ret, y_pred) {
+ # backend <-  backend()
+#  weighted_returns <-  y_ret*y_pred
+ # portfolio_return <- k_sum(weighted_returns, axis = 2)
+  #k_print_tensor(portfolio_return, "That returns of the batch portfolios")
+  #mean_return <- backend$mean(portfolio_return)
+  #var_return <- backend$std(portfolio_return)^2
+  #power_utility <- mean_return-1/2*(var)
+  
+#  return(-mean_variance_utility)
+#}
+```
+
+
+```{r}
+library(tensorflow)
+
+  negative_w <- tf$math$less_equal(x, tf$constant(0, dtype = tf$double))  
+ 
+  masked_neg_w <- tf$where(negative_w, x, tf$zeros_like(x))
+  masked_pos_w <- tf$where(negative_w, tf$zeros_like(x), x)
+ 
+  pos_w_scaled <-  1.2*tf$tanh(masked_pos_w)
+  neg_w_scaled <- -0.2*tf$tanh(masked_neg_w)
+  pos_w_scaled <- tf$divide(pos_w_scaled, k_sum(tf$tanh(masked_pos_w), axis = 2L, keepdims = TRUE))
+  neg_w_scaled <- tf$divide(neg_w_scaled, k_sum(tf$tanh(masked_neg_w), axis = 2L, keepdims = TRUE))
+  constrained_w <- tf$where(negative_w, neg_w_scaled, pos_w_scaled)
+  
+ x
+f <- tf$divide(neg_w_scaled,k_sum(tf$tanh(masked_pos_w), axis = 2L, keepdims = TRUE))
+
+```
+```{r}
+  x <- tf$constant(matrix(c(0, 0, 1,0, 0, 0, 0, 0, 0, -1,0, -0.1), ncol = 3))
+
+
+
+
+
+
+
+
+
+
+ row_mean <- tf$reduce_mean(x, 
+                             axis = 1L, 
+                             keepdims = TRUE)
+
+ row_std <- tf$math$reduce_std(x, 
+                                axis = 1L,
+                                keepdims = TRUE)
+ scaled_tensor <- tf$where(row_std > 0, (x - row_mean) / row_std, (x - row_mean)/tf$reduce_max(x))
+  scaled_tensor <- tf$where(row_std > 0, 100*x, (x - row_mean))
+
+```
+
+```{r}
+
+
+```
+```{r}
+data <- data_2short_wide  
+targets <- returns_2short
+sequence_length <- as.integer(12)
+  sampling_rate <- as.integer(1)
+  
+  start_index <- 1
+  end_index <- nrow(data)
+ num_seqs <- end_index - start_index - (sequence_length * sampling_rate)
+  start_positions <- seq(1, num_seqs, by = 1)
+  data_features <- lapply(start_positions, function(start) {
+    fin <- array(0, dim = c(1, sequence_length,ncol(data_2short_wide)))
+    end <- start + (sequence_length * sampling_rate) - sampling_rate
+    fin[1,,] <- as.matrix(data[start:end, ])
+  })
+  
+ target <- lapply(start_positions, function(start) {
+    fin <- array(0, dim = c(1, ncol(targets)))
+  end <- start + (sequence_length * sampling_rate) - sampling_rate
+  fin[1,] <- as.matrix(targets[end,])
+  fin
+})
+  array_features <-abind::abind(data_features, along = 3)
+   array_features <- aperm(array_features, c(3, 1, 2))
+  array_target <-   abind::abind(target, along = 3)
+```
+
+```{r}
+n_stocks <- length(stock_ids_short)
+data <- data_2short_lstm_feat
+timesteps <- 12
+ num_features <- dim(data)[3]
+  model_sequential <- keras_model_sequential()
+   model_sequential %>%
+  layer_cudnn_lstm(units = units_choice*25, 
+                   input_shape = c(timesteps, num_features), 
+                   return_sequences = FALSE
+                   ) %>%
+    layer_dense(units = n_stocks,
+                activation = "linear")%>%layer_lambda(row_scale) %>% layer_lambda(print_layer_cont_output) %>% 
+    layer_lambda(w_full_constraint_leverage) 
+  
+  model_sequential %>% compile(
+    loss = sharpe_ratio_loss,
+    optimizer = optimizer_adam(learning_rate = learning_rate)
+  )
+  
+ model_sequential %>% fit(
+                                 data_2short_lstm_feat ,data_2short_lstm_target ,
+                                  epochs = 12,
+                                  batch_size = 12,
+                                  validation_data = list(data_2short_lstm_feat, data_2short_lstm_target)
+                                )
+```
+
