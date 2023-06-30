@@ -89,7 +89,7 @@ generate_performance_metrics <- function(backtest_object, stocks_preselected = T
   weights <- extract_weights(backtest_object)
   turn <- calculate_turnover(weights, test_smpl_returns)
   pf_returns <- rowSums(weights*test_smpl_returns)
-  pf_ret_excess <- pf_returns
+  pf_ret_excess <- pf_returns-FF_factors_test$RF
   avg_return <- mean(pf_returns, na.rm = TRUE)
   sd_return <- sd(pf_returns, na.rm = TRUE)
   sharpe_ratio <- mean(pf_ret_excess) / sd_return
@@ -127,7 +127,7 @@ generate_performance_metrics <- function(backtest_object, stocks_preselected = T
   knitr::kable(
     list(table_data1, table_data2),
     caption = 'Performance Metrics.',
-    booktabs = TRUE, valign = 't', digits = 3
+    booktabs = TRUE, valign = 't', digits = 4
   )  %>%
     kable_styling(bootstrap_options = c("striped"))
 }
@@ -141,15 +141,23 @@ generate_performance_metrics <- function(backtest_object, stocks_preselected = T
 #' @param returns A matrix or data frame containing the returns of individual assets.
 #' @return A ggplot object representing the cumulative performance plot.
 #'
-plot_cumulative <- function(backtest_object, returns) {
+plot_cumulative <- function(backtest_object, returns, stock_preselected=TRUE) {
   weights <- extract_weights(backtest_object)
   test_smpl_returns <- as.matrix(returns[first_test:end_test, ])
   portfolio_returns <- rowSums(weights*test_smpl_returns)
   # Calculate cumulative returns for each asset
   cumulative_returns <- cumprod(1 + portfolio_returns)
-  
   # Calculate equally weighted portfolio returns
-  equally_weights <- 1 / ncol(test_smpl_returns)
+  if (stocks_preselected) {
+    equally_weights <- 1 / ncol(test_smpl_returns)
+  } else {
+    
+    test_smpl_returns <- replace(test_smpl_returns, is.na(test_smpl_returns), 0)
+    equally_weights <- 1/(ncol(test_smpl_returns)-rowSums(is.na(test_smpl_returns)))
+   
+  }
+  
+  
   ew_returns <- rowSums(equally_weights*test_smpl_returns)
   cumulative_equally_weighted <- cumprod(1 + ew_returns)
   dates_testing <- sort(data_predef_stocks$dates)[first_test:end_test]
