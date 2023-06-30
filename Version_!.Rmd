@@ -7,7 +7,10 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
 pacman::p_load(reticulate, tensorflow, abind, keras, xts, PerformanceAnalytics, kableExtra, lubridate, tidyverse, purrr, dplyr, tidyr, rlang, furrr,kerastuneR, lmtest,sandwich, gridExtra)
+
+
 source("custom_nn_keras.R", local = knitr::knit_global())
 source("data_preparation.R", local = knitr::knit_global())
 source("model_construction.R", local = knitr::knit_global())
@@ -16,17 +19,24 @@ source("performance_metrics.R", local = knitr::knit_global())
 ```
 
 # Data Preparation
+
+
+## Data Preparation
+
 ```{r, warning=FALSE, message=FALSE}
 load("~/R/Test_GPU/data_ml.RData")
+
 inputlist <- c("F-F_Research_Data_5_Factors_2x3_CSV")
 #FFdownload::FFdownload(output_file = "FF.RData",exclude_daily=TRUE,inputlist=inputlist)
 load("FF.RData")
+
 
 data_ml <- data_ml %>% select(-R3M_Usd,-R6M_Usd,-R12M_Usd)
 stock_ids <- levels(as.factor(data_ml$stock_id)) 
 stock_days <- data_ml %>%                        
     group_by(stock_id) %>% summarize(nb = n()) 
 stock_ids_short <- stock_ids[which(stock_days$nb == max(stock_days$nb))] 
+
 features <- colnames(data_ml[3:95]) 
 
 #Preparing data with stock that have full data (no missing hours)
@@ -35,6 +45,7 @@ data_predef_stocks <- process_data(data=data_ml,
                                    feature_names=NULL,  
                                    label_name="R1M_Usd", 
                                    use_full_data_stocks=TRUE)
+
 
 data_short_wide <- data_predef_stocks$features_wide
 returns_short <- data_predef_stocks$returns_winsorized
@@ -46,6 +57,7 @@ data_all_stocks <- process_data(data=data_ml,
                                 feature_names=NULL,  
                                 label_name="R1M_Usd", 
                                 use_full_data_stocks=FALSE)
+
 
 data_all_wide <- data_all_stocks$features_wide
 returns_all <- data_all_stocks$returns_winsorized
@@ -61,19 +73,25 @@ FF_factors <- FFdata$`x_F-F_Research_Data_5_Factors_2x3`$monthly$Temp2 %>%
   filter(date >= as.Date(min(data_all_stocks$dates)), date <= as.Date(max(data_all_stocks$dates)))
 
 ```
+
 # Definition of The Training-Testing-Validation Sample Periods: 
 ```{r}
 n_stock_selected <- length(stock_ids_short)
+
 num_features <- ncol(data_short_wide)
 val_window <- 60
 training_window <- 60
 first_test <- val_window + training_window
+
 testing_period_len <- nrow(data_short_wide)-training_window-val_window
 testing_periods_seq <- seq(training_window, training_window+testing_period_len)
 end_test <- first_test+testing_period_len
 #max possible nrow(data_short_wide)-training_window-val_window
 
+
 ```
+
+
 # Results of The Bayesian Optimisation: Neural Network Parameters
 ```{r}
 activation_nl_i <- "sigmoid"
@@ -84,6 +102,7 @@ units_choice <- 3
 epochs <- 200
 rate <- 0.01
 batch_size <- 12
+
 
 ```
 # NN with Complex Model with NLinear and Linear Layers
@@ -103,6 +122,7 @@ backtest_res_predef_ret_sr <- map(testing_periods_seq, backtest, data_short_wide
 
 performance_predef_sr <- generate_performance_metrics(backtest_res_predef_ret_sr, TRUE, returns_short)
 performance_predef_sr
+
 ```
 
 

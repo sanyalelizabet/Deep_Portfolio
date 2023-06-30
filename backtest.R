@@ -78,11 +78,10 @@ backtest <- function(t, data_wide, returns, model="simple",
                                                 factor = 0.01, 
                                                 patience = 50,
                                                 verbose = 1,
-                                              mode = 'auto'
+                                                mode = 'auto'
                                               )
   
   if (stocks_preselected) {
-    
     if (anyNA(returns)) {
       stop("NA values found in returns. Please ensure returns do not have missing values.")
     }
@@ -110,7 +109,7 @@ backtest <- function(t, data_wide, returns, model="simple",
     model %>% fit( x = window_data, 
                    y = window_returns, 
                    epochs = epochs, 
-                   batch_size = 24, 
+                   batch_size = batch_size, 
                    verbose = 2,  
                    validation_data = list(val_window_data, val_returns),
                    shuffle=FALSE,
@@ -121,6 +120,7 @@ backtest <- function(t, data_wide, returns, model="simple",
     
   } else {
     
+<<<<<<< HEAD
     if (model == "complex") {
     
     model <- build_model(n_stock_selected, rate, units_choice, 
@@ -131,7 +131,7 @@ backtest <- function(t, data_wide, returns, model="simple",
     model %>% fit( x = list(window_data, window_data), 
                    y = window_returns, 
                    epochs = epochs, 
-                   batch_size = 12, 
+                   batch_size = batch_size, 
                    verbose = 2,  
                    validation_data = list(list(val_window_data, val_window_data), val_returns),
                    shuffle=FALSE,
@@ -174,6 +174,7 @@ backtest <- function(t, data_wide, returns, model="simple",
     
   } else {
     return_data_predict <- as.matrix(returns[(t+val_window),])
+
     stocks_available  <- is.na(return_data_predict)
     # If stocks are not preselected, any stocks with unavailable returns are assigned weights of 0.
     # The predicted weights are then normalized again so that they sum to 1.

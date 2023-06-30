@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ew_deltas_predef_sr_expand_df <-  as.data.frame(weights_predef_sr_expand)
 colnames(ew_deltas_predef_sr_expand_df) <-colnames(returns_short)
 dates_testing <- sort(data_predef_stocks$dates)[first_test:end_test]
@@ -18,6 +19,14 @@ ew_deltas_predef_sr_tc_expand_df$dates <- as.Date(dates_testing, format = "%Y-%m
 
 # Pivot the data frame from wide to long format
 ew_deltas_predef_sr_tc_expand_long <- pivot_longer(ew_deltas_predef_sr_tc_expand_df, cols = -dates, names_to = "Stock", values_to = "Delta")
+=======
+ew_deltas_fixed_sr_expand_df <-  as.data.frame(weights_fixed_sr_expand)
+colnames(ew_deltas_fixed_sr_expand_df) <-colnames(returns_short)
+dates_testing <- sort(data_predef_stocks$dates)[first_test:end_test]
+ew_deltas_fixed_sr_expand_df$dates <- as.Date(dates_testing, format = "%Y-%m-%d")
+
+ew_deltas_fixed_sr_expand_long <- pivot_longer(ew_deltas_fixed_sr_expand_df, cols = -dates, names_to = "Stock", values_to = "Delta")
+>>>>>>> 173778f5e15b879c8c22810bcd2d271c34830ac5
 
 
 library(shiny)
@@ -33,9 +42,15 @@ ui <- fluidPage(
       sliderInput(
         "date_slider",
         "Select Date",
+<<<<<<< HEAD
         min = min(as.Date(ew_deltas_predef_sr_expand_long$dates)),
         max = max(as.Date(ew_deltas_predef_sr_expand_long$dates)),
         value = min(as.Date(ew_deltas_predef_sr_expand_long$dates)),
+=======
+        min = min(as.Date(ew_deltas_fixed_sr_expand_long$dates)),
+        max = max(as.Date(ew_deltas_fixed_sr_expand_long$dates)),
+        value = min(as.Date(ew_deltas_fixed_sr_expand_long$dates)),
+>>>>>>> 173778f5e15b879c8c22810bcd2d271c34830ac5
         timeFormat = "%Y-%m-%d",
         step = 1
       ),
@@ -66,15 +81,24 @@ server <- function(input, output, session) {
     req(update_flag())
     Sys.sleep(1)  # Pause for 1 second
     next_date <- ceiling_date(input$date_slider, "month")
+<<<<<<< HEAD
     if (next_date > max(as.Date(ew_deltas_predef_sr_expand_long$dates))) {
       next_date <- min(as.Date(ew_deltas_predef_sr_expand_long$dates))
+=======
+    if (next_date > max(as.Date(ew_deltas_fixed_sr_expand_long$dates))) {
+      next_date <- min(as.Date(ew_deltas_fixed_sr_expand_long$dates))
+>>>>>>> 173778f5e15b879c8c22810bcd2d271c34830ac5
     }
     updateSliderInput(session, "date_slider", value = next_date)
   })
   
   output$difference_plot <- renderPlot({
     filtered_data <- subset(
+<<<<<<< HEAD
       ew_deltas_predef_sr_expand_long,
+=======
+      ew_deltas_fixed_sr_expand_long,
+>>>>>>> 173778f5e15b879c8c22810bcd2d271c34830ac5
       dates == as.character(selected_date())
     )
     

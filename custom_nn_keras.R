@@ -12,7 +12,6 @@
 
 w_full_constraint <- function(x) {
   backend <-  backend()
-  #x <- x+1/tf$cast(tf$shape(x)[2], dtype=tf$float32)   
   constant_two <- (k_sum(x, axis = 2L, keepdims = TRUE)+backend$epsilon())
   output <- tf$divide(x, constant_two)
   
@@ -48,6 +47,7 @@ w_full_constraint_leverage <- function(x) {
   return(constrained_w)
 }
  
+<<<<<<< HEAD
 #' Sharpe Ratio Loss Function
 #'
 #' Calculates the Sharpe Ratio loss function given the predicted weights and observed returns.
@@ -59,11 +59,12 @@ w_full_constraint_leverage <- function(x) {
 #'
 #' @details This loss function calculates the Sharpe Ratio as the loss value. It considers the predicted weights and actual returns to compute the portfolio return, mean return, and standard deviation of returns. The Sharpe Ratio is then calculated by dividing the mean return by the standard deviation. The loss value is returned as a tensor with the same shape as the input tensors.
 #'
+
 sharpe_ratio_loss <- function(y_ret, y_pred) {
   backend <-  backend()
  
   weighted_returns <-  y_ret*y_pred
-  
+
   portfolio_return <- k_sum(weighted_returns, axis = 2L)
   
   mean_return <- backend$mean(portfolio_return)
@@ -90,7 +91,7 @@ sharpe_ratio_loss <- function(y_ret, y_pred) {
 #'
 sharpe_ratio_loss_na_check <- function(y_ret, y_pred) {
   backend <-  backend()
- 
+
   has_nan <- tf$equal(y_ret, y_ret) 
   has_nan <-  k_cast_to_floatx(has_nan)
   
@@ -115,6 +116,7 @@ sharpe_ratio_loss_na_check <- function(y_ret, y_pred) {
 #'
 #' This code defines a function called row_scale that scales the rows of a matrix using a specified backend library, likely TensorFlow. 
 row_scale <- function(x) {
+
  
   row_mean <- tf$reduce_mean(x, 
                              axis = 1L, 
@@ -239,8 +241,9 @@ sharpe_ratio_tc_loss_na_check  <- function(y_ret, y_pred) {
   
   mean_return <- backend$mean(portfolio_return)
   std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
-  sharpe_ratio <- sharpe_ratio <- (mean_return-transaction_cost) / (std_return)
+  harpe_ratio <- (mean_return-transaction_cost) / (std_return)
   
+
   #desired_shape <- shape(12, 1)
   #-tf$fill(dims = desired_shape, value = -sharpe_ratio)
   return(-sharpe_ratio)
