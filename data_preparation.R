@@ -275,11 +275,10 @@ timeseries_dataset_from_array <- function(
     end_index <- nrow(data)
   }
   
-  num_seqs <- end_index - start_index - (sequence_length * sampling_rate) + 1
+  num_seqs <- end_index - (start_index-1) - (sequence_length * sampling_rate) + 1
   
-  if (!is.null(targets)) {
-    num_seqs <- min(num_seqs, length(targets))
-  }
+
+  
   
   if (num_seqs < 2147483647) {
     index_dtype <- "integer32"
@@ -298,13 +297,13 @@ timeseries_dataset_from_array <- function(
   
   data_features <- lapply(start_positions, function(start) {
     fin <- array(0, dim = c(1, sequence_length,ncol(data)))
-    end <- start + (sequence_length * sampling_rate) - sampling_rate
+    end <- (start) + (sequence_length * sampling_rate) - sampling_rate
     fin[1,,] <- as.matrix(data[start:end, ])
   })
   
   target <- lapply(start_positions, function(start) {
     fin <- array(0, dim = c(1, ncol(targets)))
-    end <- start + (sequence_length * sampling_rate) - sampling_rate
+    end <- (start) + (sequence_length * sampling_rate) - sampling_rate
     fin[1,] <- as.matrix(targets[end,])
     fin
   })

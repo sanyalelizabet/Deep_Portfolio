@@ -90,10 +90,10 @@ generate_performance_metrics <- function(backtest_object, stocks_preselected = T
   turn <- calculate_turnover(weights, test_smpl_returns)
   pf_returns <- rowSums(weights*test_smpl_returns)
   pf_ret_excess <- pf_returns-FF_factors_test$RF
-  avg_return <- mean(pf_returns, na.rm = TRUE)
-  sd_return <- sd(pf_returns, na.rm = TRUE)
-  sharpe_ratio <- mean(pf_ret_excess) / sd(pf_ret_excess, na.rm = TRUE)
-  sharpe_ratio_tc_adj <-  (avg_return -0.005*calculate_turnover(weights, test_smpl_returns)) / sd_return
+  avg_return <- mean(pf_returns)
+  sd_return <- sd(pf_returns)
+  sharpe_ratio <- mean(pf_ret_excess) / sd(pf_ret_excess)
+  sharpe_ratio_tc_adj <-  (mean(pf_ret_excess) -0.005*calculate_turnover(weights, test_smpl_returns)) / sd_return
   max_weight <- max(weights)
   min_weight <- min(weights)
   avg_neg_weights <- mean(weights[weights < 0])
@@ -144,9 +144,7 @@ generate_performance_metrics <- function(backtest_object, stocks_preselected = T
 plot_cumulative <- function(backtest_object, returns, stock_preselected=TRUE) {
   weights <- extract_weights(backtest_object)
   test_smpl_returns <- as.matrix(returns[first_test:end_test, ])
-  portfolio_returns <- rowSums(weights*test_smpl_returns)
-  # Calculate cumulative returns for each asset
-  cumulative_returns <- cumprod(1 + portfolio_returns)
+
   # Calculate equally weighted portfolio returns
 
   if (stock_preselected) {
@@ -157,6 +155,9 @@ equally_weights <- 1 / ncol(test_smpl_returns)
     equally_weights <- 1/(ncol(test_smpl_returns)-rowSums(is.na(test_smpl_returns)))
    
   }
+  portfolio_returns <- rowSums(weights*test_smpl_returns)
+  # Calculate cumulative returns for each asset
+  cumulative_returns <- cumprod(1 + portfolio_returns)
   
   
   ew_returns <- rowSums(equally_weights*test_smpl_returns)
@@ -204,7 +205,7 @@ equally_weights <- 1 / ncol(test_smpl_returns)
   
   # Create a histogram of portfolio and equally weighted returns
   plot2 <- ggplot(data_ret_long, aes(x = Returns, fill = Type,  color=Type)) +
-    geom_histogram(aes(y=after_stat(density)), alpha=0.5, position="identity")+
+    geom_histogram(aes(y=after_stat(density)),bins=30, alpha=0.5, position="identity")+
     geom_density(alpha=.2) + scale_color_manual(values = c("#4C72B0", "#55A868")) +
     scale_fill_manual(values = c("#4C72B0", "#55A868")) +
     labs(x = "Returns", y = "Frequency", title = "Distribution of Returns") +

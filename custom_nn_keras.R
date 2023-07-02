@@ -162,7 +162,7 @@ sharpe_ratio_tc_loss <- function(y_ret, y_pred) {
   weighted_returns <-  y_ret*y_pred
   
   portfolio_return <- k_sum(weighted_returns, axis = 2)
-  
+ 
   y_pred_net <- y_ret + 1
   prior_weights <- y_pred*y_pred_net
   
@@ -241,7 +241,7 @@ sharpe_ratio_tc_loss_na_check  <- function(y_ret, y_pred) {
   
   mean_return <- backend$mean(portfolio_return)
   std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
-  harpe_ratio <- (mean_return-transaction_cost) / (std_return)
+  sharpe_ratio <- (mean_return-transaction_cost) / (std_return)
   
 
   #desired_shape <- shape(12, 1)

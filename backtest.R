@@ -46,6 +46,7 @@ backtest <- function(t, data_wide, returns, model="simple",
   )
   simple <- model == "simple"
   n_stock_selected <- ncol(returns)
+  print(t)
   
   if (window=="fixed"){
       
@@ -75,7 +76,7 @@ backtest <- function(t, data_wide, returns, model="simple",
   
   lr_callback <- callback_reduce_lr_on_plateau( monitor = 'val_loss',
                                                 factor = 0.01, 
-                                                patience = 50,
+                                                patience = 5,
                                                 verbose = 1,
                                                 mode = 'auto'
                                               )
@@ -147,19 +148,20 @@ backtest <- function(t, data_wide, returns, model="simple",
       lstm_features_val<- data_lstm_val$features
       lstm_target_val <- data_lstm_val$target
       
-      data_predict <- as.matrix(data_wide[(t+val_window-12):(t+val_window),])
-      return_observed <- as.matrix(returns[t:(t+val_window),])
+      data_predict <- as.matrix(data_wide[(t+val_window-11):(t+val_window),])
+      return_observed <- as.matrix(returns[(t+val_window-11):(t+val_window),])
       data_lstm_predict <- timeseries_dataset_from_array(data_predict, return_observed, 12)
       lstm_feat_pred <- data_lstm_predict$features
       
-      model <- build_lstm_model(n_stocks, rate, units_choice,
-                                learning_rate, lstm_features_train, loss = loss,timesteps=12)
+      model <- build_lstm_model(n_stock_selected, rate, units_choice,
+                                learning_rate, lstm_features_train, loss = loss_fun,timesteps=12)
       
       model %>% fit(
         lstm_features_train ,lstm_features_target ,
         epochs = epochs,
-        batch_size = 7,
-        validation_data = list(lstm_features_val, lstm_target_val)
+        batch_size = 1,
+        validation_data = list(lstm_features_val, lstm_target_val),
+        callbacks = list(early_stopping, lr_callback)
       )
       
       prediction_w_t <- predict(model, lstm_feat_pred)
