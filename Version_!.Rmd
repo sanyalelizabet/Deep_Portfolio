@@ -8,7 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-pacman::p_load(reticulate, tensorflow, abind, keras, xts, PerformanceAnalytics, kableExtra, lubridate, tidyverse, purrr, dplyr, tidyr, rlang, furrr,kerastuneR, lmtest,sandwich, gridExtra)
+pacman::p_load(reticulate, tensorflow, abind, keras, xts, PerformanceAnalytics, kableExtra, lubridate, tidyverse, purrr, dplyr, tidyr, rlang, furrr,kerastuneR, lmtest,sandwich, gridExtra,R6)
 
 
 source("custom_nn_keras.R", local = knitr::knit_global())
@@ -83,7 +83,7 @@ val_window <- 60
 training_window <- 60
 first_test <- val_window + training_window
 
-testing_period_len <- nrow(data_short_wide)-training_window-val_window
+testing_period_len <-  nrow(data_short_wide)-training_window-val_window
 testing_periods_seq <- seq(training_window, training_window+testing_period_len)
 end_test <- first_test+testing_period_len
 #max possible nrow(data_short_wide)-training_window-val_window
@@ -96,11 +96,11 @@ end_test <- first_test+testing_period_len
 ```{r}
 activation_nl_i <- "sigmoid"
 activation_conc <- "tanh"
-learning_rate <-0.01
+learning_rate <-0.1
 activation_nl_ii <-"swish"
-units_choice <- 3
-epochs <- 200
-rate <- 0.01
+units_choice <- 15
+epochs <- 50
+rate <- 0.1
 batch_size <- 12
 
 ```
@@ -122,7 +122,7 @@ summary(illustration_model_lstm)
 
 
 #Backtesting with all features
-## Backtesting with predefined number of stocks
+## Predefined number of stocks
 ### SR
 #### Complex
 
@@ -132,24 +132,33 @@ backtest_res_predef_ret_sr <- map(testing_periods_seq, backtest, data_short_wide
                         transaction_cost=FALSE)
 
 performance_predef_sr <- generate_performance_metrics(backtest_res_predef_ret_sr, TRUE, returns_short)
-performance_predef_sr
+performance_predef_sr$table
 
 ```
 
 ```{r}
-plot <-plot_cumulative(backtest_res_predef_ret_sr, returns_short)
-plot
+plot_predef_sr <-plot_cumulative(backtest_res_predef_ret_sr, returns_short)
+plot_predef_sr
 ```
 
 #### LSTM
 
 ```{r}
-backtest_predef_lstm <- map(testing_periods_seq, backtest, data_short_wide, returns_short, 
+learning_rate <-0.1
+units_choice <- 10
+epochs <- 50
+
+backtest_predef_lstm_sr <- map(testing_periods_seq, backtest, data_short_wide, returns_short, 
                         model="lstm", window="expand", stocks_preselected=TRUE, 
                         transaction_cost=FALSE)
 
-backtest_predef_lstm <- generate_performance_metrics(backtest_predef_lstm, TRUE, returns_short)
-backtest_predef_lstm
+perform_predef_lstm <- generate_performance_metrics(backtest_predef_lstm_sr, TRUE, returns_short)
+perform_predef_lstm
+```
+
+```{r}
+plot_predef_lstm_sr <-plot_cumulative(backtest_predef_lstm_sr, returns_short, stock_preselected = TRUE)
+plot_predef_lstm_sr
 ```
 
 ### SR TC Adj.
@@ -164,12 +173,12 @@ performance_predef_sr_tc <- generate_performance_metrics(backtest_predef_res_sr_
 performance_predef_sr_tc
 ```
 ```{r, warning=FALSE}
-plot <-plot_cumulative(backtest_predef_res_sr_tc, returns_short)
-plot
+plot_predef_res_sr_tc <-plot_cumulative(backtest_predef_res_sr_tc,TRUE, returns_short)
+plot_predef_res_sr_tc
 ```
 
 
-##  Backtesting with all stocks avaible
+##  All stocks available
 ### SR loss:
 #### Complex NN
 ```{r}
@@ -179,6 +188,25 @@ backtest_all_res_sr <- map(testing_periods_seq, backtest, data_all_wide_imputed,
 
 performance_all_sr <- generate_performance_metrics(backtest_all_res_sr, FALSE, returns_all_imputed)
 performance_all_sr
+```
+```{r}
+plot_all_sr_tc <-plot_cumulative(backtest_all_res_sr, returns_all_imputed, stock_preselected = FALSE)
+plot_all_sr_tc
+```
+
+#### LSTM
+```{r}
+backtest_all_lstm_sr <- map(testing_periods_seq, backtest, data_all_wide_imputed, returns_all_imputed, 
+                        model="lstm", window="expand", stocks_preselected=FALSE, 
+                        transaction_cost=FALSE)
+
+performance_all_lstm_sr <- generate_performance_metrics(backtest_all_lstm_sr, FALSE, returns_all_imputed)
+performance_all_lstm_sr
+
+```
+```{r}
+plot_all_lstm_sr <-plot_cumulative(backtest_all_lstm_sr, returns_all_imputed, stock_preselected = FALSE)
+plot_all_lstm_sr
 ```
 
 ###  SR TC Adj.:
@@ -266,6 +294,13 @@ plot_cumulative(backtest_2predef_ret_sr_tc, returns_2short)
 
 #### Complex
 
+```{r}
+# Create an instance of the Backtest class
+m10 <- Backtest$new(data_2short_wide, returns_2short, model="complex", transaction_cost=TRUE, stocks_preselected=TRUE)
+
+# Call the print method
+m10$print()
+```
 
 #### LSTM
 

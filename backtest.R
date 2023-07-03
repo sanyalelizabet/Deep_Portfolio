@@ -113,7 +113,7 @@ backtest <- function(t, data_wide, returns, model="simple",
                    verbose = 2,  
                    validation_data = list(val_window_data, val_returns),
                    shuffle=FALSE,
-                   callbacks = list(early_stopping) # , lr_callback
+                   callbacks = list(early_stopping,lr_callback)
     )
     
     prediction_w_t <- predict(model, data_predict)

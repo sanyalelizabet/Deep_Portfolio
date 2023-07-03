@@ -124,16 +124,16 @@ build_simple_model <- function(n_stocks, rate, units_choice, activation_nl1,
 
 
 build_lstm_model <- function(n_stocks, rate, units_choice,
-                               learning_rate, data, loss = sharpe_ratio_loss,timesteps=12) {
+                               learning_rate, data, loss = sharpe_ratio_loss,timesteps=12 ) {
   
   num_features <- dim(data)[3]
   model_sequential <- keras_model_sequential() 
   model_sequential%>%
-    layer_lstm(units = units_choice*25,  #layer_cudnn_lstm
-               input_shape = c(timesteps, num_features),dropout = 0.5,
+    layer_cudnn_lstm(units = units_choice*15, 
+               input_shape = c(timesteps, num_features),
                return_sequences = TRUE
     ) %>%
-        layer_lstm(units = units_choice*4, 
+    layer_cudnn_lstm(units = units_choice*4, 
                      input_shape = c(timesteps, num_features),
                      return_sequences = FALSE
     ) %>%

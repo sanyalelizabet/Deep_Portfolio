@@ -124,12 +124,14 @@ generate_performance_metrics <- function(backtest_object, stocks_preselected = T
   
   
   # Display the tables side by side
-  knitr::kable(
+  table <- knitr::kable(
     list(table_data1, table_data2),
     caption = 'Performance Metrics.',
     booktabs = TRUE, valign = 't', digits = 4
   )  %>%
     kable_styling(bootstrap_options = c("striped"))
+  
+  return(list(table = table, weights = weights, returns = pf_returns))
 }
 
 
