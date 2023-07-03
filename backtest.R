@@ -140,6 +140,8 @@ backtest <- function(t, data_wide, returns, model="simple",
     
     prediction_w_t <- predict(model, list(data_predict,data_predict))
     } else {  #lstm
+      
+     
       data_lstm_train <- timeseries_dataset_from_array(window_data, window_returns, 12)
       lstm_features_train<- data_lstm_train$features
       lstm_features_target <- data_lstm_train$target 
@@ -159,7 +161,7 @@ backtest <- function(t, data_wide, returns, model="simple",
       model %>% fit(
         lstm_features_train ,lstm_features_target ,
         epochs = epochs,
-        batch_size = 1,
+        batch_size = 7,
         validation_data = list(lstm_features_val, lstm_target_val),
         callbacks = list(early_stopping, lr_callback)
       )

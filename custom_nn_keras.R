@@ -62,18 +62,14 @@ w_full_constraint_leverage <- function(x) {
 
 sharpe_ratio_loss <- function(y_ret, y_pred) {
   backend <-  backend()
- 
   weighted_returns <-  y_ret*y_pred
-
+ 
   portfolio_return <- k_sum(weighted_returns, axis = 2L)
   
   mean_return <- backend$mean(portfolio_return)
   
-  std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
+  std_return <-   backend$std(portfolio_return)
   sharpe_ratio <- (mean_return+backend$constant(0.001)) / (std_return)
-  
-  #desired_shape <- shape(batch_size, 1)
-  #repeated_tensor <- tf$fill(dims = desired_shape, value = -sharpe_ratio)
   
   return(-sharpe_ratio)
 }
@@ -91,7 +87,7 @@ sharpe_ratio_loss <- function(y_ret, y_pred) {
 #'
 sharpe_ratio_loss_na_check <- function(y_ret, y_pred) {
   backend <-  backend()
-
+ 
   has_nan <- tf$equal(y_ret, y_ret) 
   has_nan <-  k_cast_to_floatx(has_nan)
   
@@ -105,9 +101,7 @@ sharpe_ratio_loss_na_check <- function(y_ret, y_pred) {
   mean_return <- backend$mean(portfolio_return)
   std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
   sharpe_ratio <- (mean_return+backend$constant(0.001)) / (std_return)
-  
-  #desired_shape <- shape(12, 1)
-  #repeated_tensor <- tf$fill(dims = desired_shape, value = -sharpe_ratio)
+ 
   
   return(-sharpe_ratio)
 }
@@ -128,7 +122,7 @@ row_scale <- function(x) {
                                 keepdims = TRUE)
  
   scaled_tensor <- tf$where(row_std > 0, (x - row_mean) / row_std, (x - row_mean))
-  #scaled_tensor <- (x - row_mean) / row_std
+  
   return(scaled_tensor)
 }
 
@@ -155,29 +149,31 @@ row_l2 <- function(x) {
 
 sharpe_ratio_tc_loss <- function(y_ret, y_pred) {
   backend <-  backend()
+  y_ret <- tf$reshape(y_ret, shape = c(tf$shape(y_pred)[1], tf$shape(y_pred)[2]))
+  
   y_ret <- tf$cast(y_ret, 
                    dtype=tf$float32)  
   y_pred <- tf$cast(y_pred, 
                     dtype=tf$float32) 
   weighted_returns <-  y_ret*y_pred
-  
   portfolio_return <- k_sum(weighted_returns, axis = 2)
  
   y_pred_net <- y_ret + 1
   prior_weights <- y_pred*y_pred_net
-  
-  weights_to_rebalance <-   tf$strided_slice( y_pred,
+   weights_to_rebalance <-   tf$strided_slice( y_pred,
                                               begin = c(1L, 0L),
                                               end = c(tf$shape(y_pred)[1], 
                                                       tf$shape(y_pred)[2]),
                                               strides = c(1L, 1L) # Strides for each axis
   ) 
+  
   prior_weights_stride <- tf$strided_slice(prior_weights,
                                            begin = c(0L, 0L),
                                            end = c(tf$shape(y_pred)[1] - 1L, 
                                                    tf$shape(y_pred)[2]),
                                            strides = c(1L, 1L)
                                            )
+  
   turn <-k_sum(tf$abs(weights_to_rebalance - prior_weights_stride),
                axis = 2)/k_sum(prior_weights_stride, axis = 2)
  
@@ -187,8 +183,10 @@ sharpe_ratio_tc_loss <- function(y_ret, y_pred) {
   std_return <- backend$std(portfolio_return)+backend$constant(0.001)
   
   sharpe_ratio <- (mean_return-transaction_cost) / (std_return)
-  #desired_shape <- shape(batch_size, 1)
-  #-tf$fill(dims = desired_shape, value = -sharpe_ratio)
+  # Check if the tensor is NaN
+  is_nan <- tf$equal(sharpe_ratio, sharpe_ratio) 
+  sharpe_ratio <- tf$where(is_nan, x = sharpe_ratio, y = 0)
+  
   return(-sharpe_ratio)
 }
 
@@ -206,6 +204,7 @@ sharpe_ratio_tc_loss <- function(y_ret, y_pred) {
 #'
 
 sharpe_ratio_tc_loss_na_check  <- function(y_ret, y_pred) {
+  y_ret <- tf$reshape(y_ret, shape = c(tf$shape(y_pred)[1], tf$shape(y_pred)[2]))
   y_ret <- tf$cast(y_ret, dtype=tf$float32)  
   y_pred <- tf$cast(y_pred, dtype=tf$float32) 
   backend <-  backend()
@@ -243,9 +242,7 @@ sharpe_ratio_tc_loss_na_check  <- function(y_ret, y_pred) {
   std_return <- backend$std(portfolio_return)+ backend$constant(0.001)
   sharpe_ratio <- (mean_return-transaction_cost) / (std_return)
   
-
-  #desired_shape <- shape(12, 1)
-  #-tf$fill(dims = desired_shape, value = -sharpe_ratio)
+  
   return(-sharpe_ratio)
 }
 

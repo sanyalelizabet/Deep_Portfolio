@@ -165,15 +165,15 @@ plot_predef_lstm_sr
 #### Complex
 ```{r}
 
-backtest_predef_res_sr_tc <- map(testing_periods_seq, backtest, data_short_wide, returns_short,model="complex", 
+backtest_predef_cmlx_sr_tc <- map(testing_periods_seq, backtest, data_short_wide, returns_short,model="complex", 
                                  window="expand",stocks_preselected=TRUE,
                                  transaction_cost=TRUE)
 
-performance_predef_sr_tc <- generate_performance_metrics(backtest_predef_res_sr_tc, TRUE, returns_short)
-performance_predef_sr_tc
+performance_predef_cmlx_sr_tc <- generate_performance_metrics(backtest_predef_cmlx_sr_tc, TRUE, returns_short)
+performance_predef_cmlx_sr_tc
 ```
 ```{r, warning=FALSE}
-plot_predef_res_sr_tc <-plot_cumulative(backtest_predef_res_sr_tc,TRUE, returns_short)
+plot_predef_res_sr_tc <-plot_cumulative(backtest_predef_cmlx_sr_tc,TRUE, returns_short)
 plot_predef_res_sr_tc
 ```
 
@@ -279,27 +279,33 @@ plot_cumulative(backtest_predef_lstm_2feat, returns_2short)
 #### Simple
 
 ```{r}
-backtest_2predef_ret_sr_tc <- map(testing_periods_seq, backtest, data_2short_wide, returns_2short, 
+backtest_2predef_smpl_sr_tc <- map(testing_periods_seq, backtest, data_2short_wide, returns_2short, 
                         model="simple", window="expand", stocks_preselected=TRUE, 
                         transaction_cost=TRUE)
 
-performance_3predef_sr_tc <- generate_performance_metrics(backtest_2predef_ret_sr_tc, TRUE, returns_2short)
-performance_3predef_sr_tc
+performance_2predef_smpl_sr_tc <- generate_performance_metrics(backtest_2predef_smpl_sr_tc, TRUE, returns_2short)
+performance_2predef_smpl_sr_tc$table
 
 ```
 
 ```{r}
-plot_cumulative(backtest_2predef_ret_sr_tc, returns_2short)
+plot_cumulative(backtest_2predef_smpl_sr_tc, returns_2short)
 ```
 
 #### Complex
 
 ```{r}
 # Create an instance of the Backtest class
-m10 <- Backtest$new(data_2short_wide, returns_2short, model="complex", transaction_cost=TRUE, stocks_preselected=TRUE)
-
-# Call the print method
-m10$print()
+predef2_cmpx_sr_tc <- Backtest$new(data_2short_wide, returns_2short, window = "expand", model="complex", transaction_cost=TRUE, stocks_preselected=TRUE)
+backtest_predef2_cmpx_sr_tc <- predef2_cmpx_sr_tc$apply_backtest_to_periods()
+```
+```{r}
+predef2_cmpx_sr_tc$print()
+performance_2predef_cmpx_sr_tc <- generate_performance_metrics(backtest_predef2_cmpx_sr_tc, TRUE, returns_2short)
+performance_2predef_cmpx_sr_tc$table
+```
+```{r}
+plot_cumulative(predef2_cmpx_sr_tc, returns_2short)
 ```
 
 #### LSTM
