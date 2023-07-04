@@ -4,6 +4,7 @@
 #'
 #' @field data_wide The input data in wide format.
 #' @field returns The matrix or data frame of returns.
+#' @field dates The vector of dates
 #' @field train_window The length of initial training.
 #' @field val_window The length of validation window.
 #' @field model The model used for prediction.
@@ -21,9 +22,10 @@
 #' @field short_position_size Size of shorted assets Default 0.2 (e.g. 0.2  would give the sum of negative weights -0.2)
 #' @field long_position_size Size of long assets (e.g. 1 would give the sum of negative weights 1) Default 1.2
 Backtest <- R6Class("Backtest", lock_objects = FALSE,
-                    public = list(# Fields
+                    public = list(
                       data_wide = NULL,
                       returns = NULL,
+                      dates = NULL,
                       train_window = NULL,
                       val_window = NULL,
                       model = NULL,
@@ -41,18 +43,20 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                       short_position_size = NULL,
                       long_position_size = NULL,
                       transaction_fee = NULL,
+                      FF_factors=NULL,
                       
-                      initialize = function(data_wide=NULL, returns=NULL,train_window=60,val_window=60, model = "simple", window = "expand",
+                      initialize = function(data_wide=NULL, returns=NULL,dates=NULL, train_window=60,val_window=60, model = "simple", window = "expand",
                                             stocks_preselected = FALSE, transaction_cost = FALSE,
                                             activation_nl_i = "sigmoid", activation_conc = "swish",
                                             learning_rate = 0.01, activation_nl_ii = "tanh",
                                             units_choice = 10, epochs = 50, rate = 0.1, batch_size = 12,
-                                            short_position_size = 0.2,long_position_size = 1.2, transaction_fee  = 0.005 ) {
+                                            short_position_size = 0.2,long_position_size = 1.2, transaction_fee  = 0.005, FF_factors=NULL ) {
                         
                         
                         
                         self$data_wide <- data_wide
                         self$returns <- returns
+                        self$dates <- dates
                         self$model <- model
                         self$window <- window
                         self$stocks_preselected <- stocks_preselected
@@ -72,8 +76,8 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                         self$training_window <- train_window
                         self$first_test <- val_window + training_window
                         self$testing_period_len <-  nrow(data_wide)-training_window-val_window
-                        self$testing_periods_seq <- seq(training_window, training_window+testing_period_len)
-                        self$end_test <- first_test+testing_period_len
+                        self$train_end_periods_seq <- seq(training_window, training_window+testing_period_len)
+                        self$end_test <- nrow(data_wide)
                         
                         
                       },
@@ -169,7 +173,7 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                       
                       nan_ret_to_zero <- tf$where(tf$equal(y_ret, y_ret), y_ret, tf$zeros_like(y_ret) )
                       nan_w_to_zero <- tf$math$multiply(y_pred, has_nan)
-                      nan_w_to_zero <- nan_w_to_zero/k_sum(nan_w_to_zero) #Weiths we are working with
+                      nan_w_to_zero <- nan_w_to_zero/k_sum(nan_w_to_zero)
                       
                       weighted_returns <-  nan_ret_to_zero*nan_w_to_zero
                       portfolio_return <- k_sum(weighted_returns, axis = 2L)
@@ -231,6 +235,11 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                       
                       return(scaled_tensor)
                     },
+                    
+                    extract_weights = function(backt_object) {
+                      return(do.call(rbind, lapply(backt_object, unlist)))
+                    },
+                    
                     build_model = function(n_stocks, rate, units_choice, activation_nl_i, activation_conc,
                                             learning_rate, activation_nl_ii, data, loss = sharpe_ratio_loss) {
                       
@@ -317,7 +326,7 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                                     activation = "linear",
                                     kernel_initializer = initializer_glorot_uniform(seed = 144)) %>%
                         layer_lambda(row_scale) %>%
-                        layer_lambda(w_full_constraint_leverage)  # Full investment constraint with no leverage allowed
+                        layer_lambda(w_full_constraint_leverage) 
                       
                       model_sequential %>% compile(
                         loss = loss,
@@ -327,17 +336,38 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                       return(model_sequential)
                     },
                    apply_backtest_to_periods = function() {
-                        results <- purrr::map(self$testing_periods_seq, backtest, self$data_wide, self$returns, 
+                     if (self$model=="all"){
+                       all_models <- c("simple", "complex", "lstm")
+                       print(model)
+                       weights <- list()
+                       for (i in seq_along(all_models)) {
+                         model_n <- all_models[i]
+                         results <- purrr::map(self$train_end_periods_seq, backtest, self$data_wide, self$returns, 
+                                               model = model_n, window = self$window, stocks_preselected = self$stocks_preselected, 
+                                               transaction_cost = self$transaction_cost)
+                         model_weights <- extract_weights(results)
+                         
+                         weights <-  append(weights, list(model_weights))
+                         names(weights)[i] <- model_n
+                       }
+                     } else {
+                     
+                        results <- purrr::map(self$train_end_periods_seq, backtest, self$data_wide, self$returns, 
                                        model = self$model, window = self$window, stocks_preselected = self$stocks_preselected, 
                                        transaction_cost = self$transaction_cost)
-                        return(results)
+                        weights <- append(weights, list(results))
+                        names(weights)[1] <- self$model
+                     }
+                        
+                      
+                        return(weights)
                                          },
-                      backtest = function(t, data_wide, returns, model="simple",
+                      backtest = function(last_train, data_wide, returns, model="simple",
                                            window="fixed", stocks_preselected=TRUE, 
                                            transaction_cost=FALSE) {
                         # Parameter Validation
-                        stopifnot(is.numeric(t),
-                                  t >= 1 && t <= nrow(data_wide),
+                        stopifnot(is.numeric(last_train),
+                                  last_train >= 1 && last_train <= nrow(data_wide),
                                   is.data.frame(data_wide),
                                   is.data.frame(returns),
                                   window %in% c("fixed", "expand"),
@@ -347,24 +377,24 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                         )
                         simple <- model == "simple"
                         n_stock_selected <- ncol(returns)
-                        print(t)
+                        print(last_train)
                         
-                        if (window=="fixed"){
+                        if (window=="fixed"| model == "lstm"){
                           
-                          window_data <- as.matrix(data_wide[(t-training_window+1):t,])
-                          window_returns <- as.matrix(returns[(t-training_window+1):t,])
-                          val_window_data <- as.matrix(data_wide[t:(t+val_window-1),])
-                          val_returns <- as.matrix(returns[t:(t+val_window-1),])
-                          data_predict <- as.matrix(data_wide[(t+val_window),])
+                          window_data <- as.matrix(data_wide[(last_train-training_window+1):last_train,])
+                          window_returns <- as.matrix(returns[(last_train-training_window+1):last_train,])
+                          val_window_data <- as.matrix(data_wide[last_train:(last_train+val_window-1),])
+                          val_returns <- as.matrix(returns[last_train:(last_train+val_window-1),])
+                          data_predict <- as.matrix(data_wide[(last_train+val_window),])
                           
                         } else {
                           
-                          first <- (training_window+t)%%6+1
-                          window_data <- as.matrix(data_wide[first:(t+training_window),])
-                          window_returns <- as.matrix(returns[first:(t+training_window),])
-                          val_window_data <- as.matrix(data_wide[t:(t+val_window-1),])
-                          val_returns <- as.matrix(returns[t:(t+val_window-1),])
-                          data_predict <- as.matrix(data_wide[(t+val_window),])
+                          first <- last_train%%self$batch_size+1
+                          window_data <- as.matrix(data_wide[first:last_train,])
+                          window_returns <- as.matrix(returns[first:last_train,])
+                          val_window_data <- as.matrix(data_wide[last_train:(last_train+val_window-1),])
+                          val_returns <- as.matrix(returns[last_train:(last_train+val_window-1),])
+                          data_predict <- as.matrix(data_wide[(last_train+val_window),])
                           
                           
                         }
@@ -376,7 +406,7 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                         )
                         
                         lr_callback <- callback_reduce_lr_on_plateau( monitor = 'val_loss',
-                                                                      factor = 0.005, 
+                                                                      factor = 0.75, 
                                                                       patience = 25,
                                                                       verbose = 1,
                                                                       mode = 'auto'
@@ -410,7 +440,7 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                           model %>% fit( x = window_data, 
                                          y = window_returns, 
                                          epochs = epochs, 
-                                         batch_size = batch_size, 
+                                         batch_size = self$batch_size, 
                                          verbose = 2,  
                                          validation_data = list(val_window_data, val_returns),
                                          shuffle=FALSE,
@@ -432,7 +462,7 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                             model %>% fit( x = list(window_data, window_data), 
                                            y = window_returns, 
                                            epochs = epochs, 
-                                           batch_size = batch_size, 
+                                           batch_size = self$batch_size, 
                                            verbose = 2,  
                                            validation_data = list(list(val_window_data, val_window_data), val_returns),
                                            shuffle=FALSE,
@@ -450,8 +480,8 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                             lstm_features_val<- data_lstm_val$features
                             lstm_target_val <- data_lstm_val$target
                             
-                            data_predict <- as.matrix(data_wide[(t+val_window-11):(t+val_window),])
-                            return_observed <- as.matrix(returns[(t+val_window-11):(t+val_window),])
+                            data_predict <- as.matrix(data_wide[(last_train+val_window-11):(last_train+val_window),])
+                            return_observed <- as.matrix(returns[(last_train+val_window-11):(last_train+val_window),])
                             data_lstm_predict <- timeseries_dataset_from_array(data_predict, return_observed, 12)
                             lstm_feat_pred <- data_lstm_predict$features
                             
@@ -476,7 +506,7 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                           return(prediction_w_t)
                           
                         } else {
-                          return_data_predict <- as.matrix(returns[(t+val_window),])
+                          return_data_predict <- as.matrix(returns[(last_train+val_window),])
                           
                           stocks_available  <- is.na(return_data_predict)
                           # If stocks are not preselected, any stocks with unavailable returns are assigned weights of 0.
@@ -506,7 +536,139 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                         }
                         
                         
-                      }
+                      },
+                   
+                   calculate_turnover <- function(weights, test_returns) {
+                     
+                     weighted_returns <- test_returns * weights
+                     portfolio_return <- rowSums(weighted_returns)
+                     
+                     net_return <- test_returns + 1
+                     prior_weights <- weights * net_return
+                     
+                     weights_to_rebalance <- weights[1:(nrow(weights)-1), ]
+                     prior_weights_stride <- prior_weights[1:(nrow(weights)-1), ]
+                     turn <- rowSums(abs(weights_to_rebalance - prior_weights_stride)) / rowSums(prior_weights_stride)
+                     return(mean(turn)) 
+                   },
+                   
+                   generate_performance_metrics <- function() {
+                     if (is.null(self$FF_factors)) {
+                       stop("FF Factors data is required for performance metrics.")
+                     }
+                     
+                     dates_testing <- sort(self$dates)[self$first_test:self$end_test, ]
+                     FF_factors_test <- self$FF_factors %>% filter(date %in% dates_testing)
+                     test_smpl_returns <- as.matrix(self$returns[self$first_test:self$end_test, ])
+                     
+                     if (self$stocks_preselected==FALSE) {
+                       test_smpl_returns <- replace(test_smpl_returns, is.na(test_smpl_returns), 0)
+                       
+                     } 
+                     
+                     turn <-  unlist(purrr::map(weights, calculate_turnover, test_smpl_returns))
+                     pf_returns <-  purrr::map(weights, function(x) rowSums(x*test_smpl_returns) )
+                     pf_ret_excess <- purrr::map(pf_returns, function(x) x-FF_factors_test$RF)
+                     avg_return <- unlist(purrr::map(pf_returns, function(x) mean(x) ))
+                     avg_return_excess <-  unlist(purrr::map(pf_ret_excess, function(x) mean(x) ))
+                     sd_return <-  unlist(purrr::map(pf_returns, function(x) sd(x) ))
+                     sharpe_ratio <- avg_return_excess/ sd_return
+                     sharpe_ratio_tc_adj <-  (avg_return_excess -self$transaction_fee*turn) / sd_return
+                     max_weight <- unlist(purrr::map(weights, function(x) max(x) ))
+                     min_weight <- unlist(purrr::map(weights, function(x) min(x) ))
+                     avg_neg_weights <- unlist(purrr::map(weights, function(x) mean(x[x < 0]) )) 
+                     avg_pos_weights <- unlist(purrr::map(weights, function(x) mean(x[x > 0]) ))
+                     frac_neg_weights <- unlist( purrr::map(weights, function(x) mean(apply(x, 1, function(row) sum(row[row < 0]))))) 
+                     frac_pos_weights <- unlist( purrr::map(weights, function(x) mean(apply(x, 1, function(row) sum(row[row > 0])))))
+                     returns_excess_df <- as.data.frame(pf_ret_excess)
+                     models <- colnames(returns_excess_df)
+                     returns_excess_df$date <- FF_factors_test$date
+                     FF_factors_test <- left_join(FF_factors_test, returns_excess_df, by=date)
+                     CAPM_alpha_results <- data.frame(model = character(),
+                                                      alpha_CAPM = numeric(),
+                                                      alpha_CAPM_t = numeric(),
+                                                      alpha_CAPM_p = numeric(),
+                                                      stringsAsFactors = FALSE)
+                     FF3_alpha_results <- data.frame(model = character(),
+                                                     alpha_FF3 = numeric(),
+                                                     alpha_FF3_t = numeric(),
+                                                     alpha_FF3_p = numeric(),
+                                                     stringsAsFactors = FALSE)
+                     
+                     for (model in models ) {
+                       
+                       regres_form <- lm(as.formula(paste(model, "~ Mkt.RF")), data = FF_factors_test)
+                       alpha_CAPM <- coef(regres_form)[1]
+                       alpha_CAPM_t <- coeftest(regres_form, vcov = NeweyWest(regres_form))[1, 3]
+                       alpha_CAPM_p <- coeftest(regres_form, vcov = NeweyWest(regres_form))[1, 4]
+                       
+                       # Add results to the data frame
+                       CAPM_alpha_results <- rbind(CAPM_alpha_results, data.frame(model = model,
+                                                                                  alpha_CAPM = alpha_CAPM,
+                                                                                  t = alpha_CAPM_t,
+                                                                                  p = alpha_CAPM_p))
+                     }
+                     rownames(CAPM_alpha_results) <- NULL 
+                     for (model in models ) {
+                       
+                       regres_form <- lm(as.formula(paste(model, "~ Mkt.RF+ SMB + HML")), data = FF_factors_test)
+                       alpha_FF3 <- coef(regres_form)[1]
+                       alpha_FF3_t <- coeftest(regres_form, vcov = NeweyWest(regres_form))[1, 3]
+                       alpha_FF3_p <- coeftest(regres_form, vcov = NeweyWest(regres_form))[1, 4]
+                       
+                       # Add results to the data frame
+                       FF3_alpha_results <- rbind(FF3_alpha_results, data.frame(model = model,
+                                                                                alpha_FF3 = alpha_FF3,
+                                                                                t = alpha_FF3_t,
+                                                                                p = alpha_FF3_p))
+                     }
+                     rownames(FF3_alpha_results) <- NULL
+                     
+                     table_data1 <- t(data.frame(
+                       avg_return,
+                       sd_return,
+                       sharpe_ratio,
+                       sharpe_ratio_tc_adj,
+                       turn,
+                       max_weight,
+                       min_weight,
+                       avg_neg_weights,
+                       avg_pos_weights,
+                       frac_neg_weights,
+                       frac_pos_weights
+                     ))
+                     
+                     rownames(table_data1) <- c(
+                       "Average return",
+                       "SD return",
+                       "Sharpe ratio",
+                       "Sharpe ratio TC Adj.",
+                       "Average Turnover",
+                       "Max. weight",
+                       "Min. weight",
+                       "Avg. negative weights",
+                       "Avg. positive weights",
+                       "Avg. fraction of negative weights",
+                       "Avg. fraction of positive weights"
+                     )
+                     
+                     
+                     # Display the tables side by side
+                     table1 <- knitr::kable(
+                       table_data1,booktabs = TRUE, valign = 'f', digits = 4,
+                       caption = 'Performance Metrics.'
+                     ) %>%
+                       kable_styling(bootstrap_options = c("striped"))
+                     
+                     table2 <- knitr::kable(
+                       list(CAPM_alpha_results,FF3_alpha_results),booktabs = TRUE, valign = 'f', digits = 4,
+                       caption = 'CAPM'
+                     ) %>% 
+                       kable_styling(bootstrap_options = c("striped"))
+                     
+                     
+                     return(list(statistics = table1, aplhas = table2))
+                   }
                       
                       
                      
