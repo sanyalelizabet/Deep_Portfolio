@@ -573,7 +573,11 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                      avg_return_excess <-  unlist(purrr::map(pf_ret_excess, function(x) mean(x) ))
                      sd_return <-  unlist(purrr::map(pf_returns, function(x) sd(x) ))
                      sharpe_ratio <- avg_return_excess/ sd_return
+<<<<<<< HEAD
                      sharpe_ratio_tc_adj <-  (avg_return_excess -self$transaction_fee*turn) / sd_return
+=======
+                     sharpe_ratio_tc_adj <-  (avg_return_excess -0.005*turn) / sd_return
+>>>>>>> abf5976a98d43e810ba35fb1ade002b18b691d09
                      max_weight <- unlist(purrr::map(weights, function(x) max(x) ))
                      min_weight <- unlist(purrr::map(weights, function(x) min(x) ))
                      avg_neg_weights <- unlist(purrr::map(weights, function(x) mean(x[x < 0]) )) 
