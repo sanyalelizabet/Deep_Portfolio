@@ -67,171 +67,32 @@ returns <- data_short %>%
 ```{r}
 library(keras)
 
-# Assuming you have your data stored in a data frame called 'df'
 
 
-characteristics <- c("Div_Yld", "Eps", "Mkt_Cap_12M_Usd", "Mom_11M_Usd", "Ocf", "Pb", "Vol1Y_Usd", "Debtequity", "Cash_Per_Share", "Asset_Turnover")
-
-num_data_steps <- length(unique(data_short$date))
-num_characteristics <- length(characteristics)
-num_stocks <- length(unique(data_short$stock_id))
-
-
-data_tensor <- array_reshape(as.matrix(data_short[, characteristics]), dim = c(num_stocks, num_data_steps, num_characteristics))
-
-dim(data_tensor)
-
-```
-
-
-```{r}
-rate <- 0.5
-units_lin <-  481
-units_nlin_i <- 321
-activation_nl_i <- "tanh"
-units_conc <- 1
-activation_conc <- "swish"
-learning_rate <-0.01
-units_nlin_ii <- 385
-activation_nl_ii <-"swish"
-
-
-build_model_conv <- function(rate, units_lin,units_nlin_i, activation_nl_i,units_conc,activation_conc,learning_rate,units_nlin_ii, activation_nl_iiб, data ) {
-
-temp <- units_nlin_ii
-temp <- activation_nl_ii
-num_features <- ncol(data)
-
-input_shape <- c(num_features, 1)  # Assuming 1 channel for time series data
-
-layer_1 <- layer_input(shape = input_shape, name = "Conv_Model_Input")
-
-layer_conv <- layer_1 %>%
-  layer_conv_1d(filters = num_filters, kernel_size = filter_size, activation = "relu") %>%
-  layer_global_max_pooling_1d() %>%
-  layer_dropout(rate = rate)
-
-layer_2 <- layer_input(shape = input_shape, name = "Non-Linear_Model_Input")
-
-layer_nonlinear <- layer_2 %>%
-  layer_dense(units = units_nlin_i,
-              activation = activation_nl_i,
-              kernel_initializer = initializer_random_normal(mean = 0.09, stddev = 0.04)) %>%
-  layer_dropout(rate = rate)
-
-concat <- layer_concatenate(list(layer_conv, layer_nonlinear))
-
-layer_3 <- concat %>%
-  layer_dense(units = units_conc,
-              activation = activation_conc,
-              kernel_initializer = initializer_random_normal(mean = 0.09, stddev = 0.04))
-
-# Define the rest of the model
-output <- layer_3 %>%
-  layer_dense(units = length(stock_ids_short),
-              activation = "linear",
-              kernel_initializer = initializer_random_normal(mean = 0.09, stddev = 0.04)) %>%
-  layer_lambda(w_full_constraint)  # full investment constraint
-
-model <- keras_model(inputs = list(layer_1, layer_2), outputs = output)
-
-# Compile the model
-model %>% compile(
-  loss = sharpe_ratio_loss,
-  optimizer = optimizer_adam(learning_rate = learning_rate)
-)
-
-           return(model)
-           } 
-```
-
-
-```{r}
-reshape_input <- function(data_wide) {
-  num_stocks <- dim(data_wide)[2]
-  num_time_steps <- dim(data_wide)[1]
+build_conv_model <- function(n_stocks, learning_rate, data, loss = sharpe_ratio_loss,timesteps=12 ) {
   
-  # Reshape the input data
-  data_reshaped <- array(data_wide, dim = c(num_stocks, num_time_steps, 3))
+  num_features <- dim(data)[3]
+  model_sequential <- keras_model_sequential() 
+  model_sequential%>%
+    layer_conv_1d(filters=64, kernel_size=5, activation="relu",
+               input_shape = c(timesteps, num_features)
+    ) %>% layer_conv_1d(filters=32, kernel_size=4, activation="relu"
+    )%>% layer_conv_1d(filters=16, kernel_size=4, activation="relu"
+    ) %>% layer_flatten() %>% layer_dense(units = n_stocks,
+                activation = "tanh")%>% 
+    layer_dense(units = n_stocks,
+                activation = "linear") %>%  layer_lambda(row_scale) %>% 
+    layer_lambda(w_full_constraint_leverage)
   
-  return(data_reshaped)
+  model_sequential %>% compile(
+    loss = loss,
+    optimizer = optimizer_rmsprop(learning_rate =as.double(learning_rate))
+  ) 
+  
+  return(model_sequential)
 }
 ```
 
-```{r}
-window_data_reshaped <- reshape_input(window_data)
-window_data_reshaped
-```
 
 
-
-
-```{r}
-# Define dropout rate
-
-num_features <- 3720
-val_window <- 50
-training_window <- 60
- 
-backtest <- function(t, data_wide, returns) {
- 
-    history <- list()
-    predictions <- list()
-  
-    window_data <- as.matrix(data_wide[1:t,1:15])
-    window_returns <- as.matrix(returns[1:t,1:15])
-    val_window_data <- as.matrix(data_wide[t:(t+val_window),1:15])
-    val_returns <- as.matrix(returns[t:(t+val_window),1:15])
-    data_predict <- as.matrix(data_wide[(t+1+val_window),1:15])
-    
-    model <- build_model(rate, units_lin,units_nlin_i, activation_nl_i,units_conc,activation_conc,learning_rate,units_nlin_ii, activation_nl_ii, data_wide )
-    
-    
-     early_stopping <- callback_early_stopping(monitor = "val_loss",
-                                               patience = 15,
-                                               restore_best_weights = TRUE
-                                               )
-
-    history[[t]] <- model %>% fit( x = list(window_data, window_data), 
-                                   y = window_returns, 
-                                   epochs = 60, 
-                                   batch_size = 24, 
-                                   verbose = 2,  
-                                   validation_data = list(list(val_window_data, val_window_data), val_returns),
-                                   shuffle=FALSE,
-                                   callbacks = list(early_stopping))
-    
-    prediction_w_t <- predict(model, list(data_predict,data_predict))
-                              
-  return(prediction_w_t)
-}
-
-
-```
-
-
-
-```{r}
-
-
-testing_periods <-  16
-#max possible nrow(data_wide)-training_window-val_window
-
-t_values <- seq(training_window, training_window+testing_periods)
-
-backtest_results <- map(t_values, backtest, data_wide, returns)
-
-test_sample_returns <- as.matrix(returns[(training_window+val_window+1):(training_window+val_window+testing_periods+1),])
-weights_sample_returns <- do.call(rbind, lapply(backtest_results, unlist))
-test_pf_ret <- rowSums(weights_sample_returns *  test_sample_returns)
-
-#Metrics:
-
-mean(test_pf_ret, na.rm = TRUE)/sd(test_pf_ret, na.rm = TRUE)
-```
-
-
-
-
-```
 

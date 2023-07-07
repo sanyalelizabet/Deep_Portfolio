@@ -19,7 +19,7 @@
 #'
 #' Perform backtesting of a trading strategy using a specified model.
 #'
-#' @param t The current time index.
+#' @param last_train The current time index of the end of training.
 #' @param data_wide Matrix of historical data.
 #' @param returns Matrix of  historical returns.
 #' @param model Type of the model to be used: "simple", "complex", "lstm". Default is "simple"
@@ -31,12 +31,12 @@
 #'
 #' @details The `backtest` function performs backtesting of a trading strategy using a specified model. It takes as input the current time index, historical data, and returns. The function builds a model based on the specified parameters and performs training using the training data. The trained model is then used to predict weights for the next time period. The function returns the predicted weights.
 #'
-backtest <- function(t, data_wide, returns, model="simple",
+backtest <- function(last_train, data_wide, returns, model="simple",
                      window="fixed", stocks_preselected=TRUE, 
                      transaction_cost=FALSE) {
   # Parameter Validation
   stopifnot(is.numeric(t),
-            t >= 1 && t <= nrow(data_wide),
+            last_train >= 1 && last_train <= nrow(data_wide),
             is.data.frame(data_wide),
             is.data.frame(returns),
             window %in% c("fixed", "expand"),
@@ -50,20 +50,20 @@ backtest <- function(t, data_wide, returns, model="simple",
   
   if (window=="fixed"){
       
-      window_data <- as.matrix(data_wide[(t-training_window+1):t,])
-      window_returns <- as.matrix(returns[(t-training_window+1):t,])
-      val_window_data <- as.matrix(data_wide[t:(t+val_window-1),])
-      val_returns <- as.matrix(returns[t:(t+val_window-1),])
-      data_predict <- as.matrix(data_wide[(t+val_window),])
+      window_data <- as.matrix(data_wide[(last_train-training_window+1):last_train,])
+      window_returns <- as.matrix(returns[(last_train-training_window+1):last_train,])
+      val_window_data <- as.matrix(data_wide[last_train:(last_train+val_window-1),])
+      val_returns <- as.matrix(returns[last_train:(last_train+val_window-1),])
+      data_predict <- as.matrix(data_wide[(last_train+val_window),])
       
   } else {
     
-    first <- (training_window+t)%%6+1
-    window_data <- as.matrix(data_wide[first:(t+training_window),])
-    window_returns <- as.matrix(returns[first:(t+training_window),])
-    val_window_data <- as.matrix(data_wide[t:(t+val_window-1),])
-    val_returns <- as.matrix(returns[t:(t+val_window-1),])
-    data_predict <- as.matrix(data_wide[(t+val_window),])
+    first <- last_train%%batch_size+1
+    window_data <- as.matrix(data_wide[first:last_train,])
+    window_returns <- as.matrix(returns[first:last_train,])
+    val_window_data <- as.matrix(data_wide[last_train:(last_train+val_window-1),])
+    val_returns <- as.matrix(returns[last_train:(last_train+val_window-1),])
+    data_predict <- as.matrix(data_wide[(last_train+val_window),])
     
     
   }
@@ -139,7 +139,7 @@ backtest <- function(t, data_wide, returns, model="simple",
     )
     
     prediction_w_t <- predict(model, list(data_predict,data_predict))
-    } else {  #lstm
+    } if (model == "lstm") {  
       
      
       data_lstm_train <- timeseries_dataset_from_array(window_data, window_returns, 12)
@@ -150,8 +150,8 @@ backtest <- function(t, data_wide, returns, model="simple",
       lstm_features_val<- data_lstm_val$features
       lstm_target_val <- data_lstm_val$target
       
-      data_predict <- as.matrix(data_wide[(t+val_window-11):(t+val_window),])
-      return_observed <- as.matrix(returns[(t+val_window-11):(t+val_window),])
+      data_predict <- as.matrix(data_wide[(last_train+val_window-11):(last_train+val_window),])
+      return_observed <- as.matrix(returns[(last_train+val_window-11):(last_train+val_window),])
       data_lstm_predict <- timeseries_dataset_from_array(data_predict, return_observed, 12)
       lstm_feat_pred <- data_lstm_predict$features
       
@@ -169,6 +169,39 @@ backtest <- function(t, data_wide, returns, model="simple",
       prediction_w_t <- predict(model, lstm_feat_pred)
       
     }
+    
+    if (model == "conv") {
+      
+      data_conv_train <- timeseries_dataset_from_array(window_data, window_returns, 12)
+      conv_features_train<- data_conv_train$features
+      conv_target_train <- data_conv_train$target 
+      
+      data_conv_val <- timeseries_dataset_from_array(val_window_data, val_returns, 12)
+      conv_features_val<- data_conv_val$features
+      conv_target_val <- data_conv_val$target
+      
+      data_predict <- as.matrix(data_wide[(last_train+val_window-11):(last_train+val_window),])
+      return_observed <- as.matrix(returns[(last_train+val_window-11):(last_train+val_window),])
+      data_conv_predict <- timeseries_dataset_from_array(data_predict, return_observed, 12)
+      conv_feat_pred <- data_conv_predict$features
+     
+      model <- build_conv_model(n_stock_selected,0.01, conv_features_train, loss = sharpe_ratio_loss,timesteps=12)
+      
+      model %>% fit(
+        conv_features_train ,conv_target_train ,
+        epochs = epochs,
+        batch_size = 12,
+        shuffle=FALSE,
+        validation_data = list(conv_features_val, conv_target_val),
+        callbacks = list(early_stopping, lr_callback)
+      )
+      
+      prediction_w_t <- predict(model, conv_feat_pred)
+      
+    
+      
+      
+    }
   }
  
   if (stocks_preselected) {
@@ -176,7 +209,7 @@ backtest <- function(t, data_wide, returns, model="simple",
     return(prediction_w_t)
     
   } else {
-    return_data_predict <- as.matrix(returns[(t+val_window),])
+    return_data_predict <- as.matrix(returns[(last_train+val_window),])
 
     stocks_available  <- is.na(return_data_predict)
     # If stocks are not preselected, any stocks with unavailable returns are assigned weights of 0.

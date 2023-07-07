@@ -148,4 +148,28 @@ build_lstm_model <- function(n_stocks, rate, units_choice,
   
   return(model_sequential)
 }
+
+
+build_conv_model <- function(n_stocks, learning_rate, data, loss = sharpe_ratio_loss,timesteps=12 ) {
+  
+  num_features <- dim(data)[3]
+  model_sequential <- keras_model_sequential() 
+  model_sequential%>%
+    layer_conv_1d(filters=64, kernel_size=5, activation="sigmoid",
+                  input_shape = c(timesteps, num_features)
+    ) %>% layer_conv_1d(filters=32, kernel_size=4, activation="relu"
+    )%>% layer_conv_1d(filters=16, kernel_size=4, activation="relu"
+    ) %>% layer_flatten() %>% layer_dense(units = n_stocks,
+                                          activation = "tanh")%>% 
+    layer_dense(units = n_stocks,
+                activation = "linear") %>%  layer_lambda(row_scale) %>% 
+    layer_lambda(w_full_constraint_leverage)
+  
+  model_sequential %>% compile(
+    loss = loss,
+    optimizer = optimizer_adam(learning_rate =as.double(learning_rate))
+  )
+  
+  return(model_sequential)
+}
     
