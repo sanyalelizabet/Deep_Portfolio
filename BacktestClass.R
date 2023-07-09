@@ -8,19 +8,19 @@
 #' @field train_window The length of initial training.
 #' @field val_window The length of validation window.
 #' @field model The model used for prediction: "".
-#' @field window The window type for the training data fixed or extanding.
+#' @field window The window type for the training data fixed or extending.
 #' @field stocks_preselected Boolean indicating whether the stocks are preselected.
-#' @field transaction_cost Boolean indicating whether transaction costs are considered.
+#' @field transaction_cost Boolean indicating whether transaction costs are considered. (Default: FALSE)
 #' @field activation_nl_i The activation function for the nonlinear layer I.
-#' @field activation_conc The activation function for the concatination layer.
+#' @field activation_conc The activation function for the concatenation layer.
 #' @field learning_rate The learning rate for the optimization algorithm.
 #' @field activation_nl_ii The activation function for the nonlinear layer II.
 #' @field units_choice The number of units for the fully connected layer.
 #' @field epochs The number of training epochs.
 #' @field rate The regularization parameter for the optimization algorithm.
 #' @field batch_size The batch size for training.
-#' @field short_position_size Size of shorted assets Default 0.2 (e.g. 0.2  would give the sum of negative weights -0.2)
-#' @field long_position_size Size of long assets (e.g. 1 would give the sum of negative weights 1) Default 1.2
+#' @field short_position_size Size of shorted assets Default 0.2 (e.g. 0.2  would result the sum of negative weights -0.2)
+#' @field long_position_size Size of long assets (e.g. 1 would result the sum of negative weights 1) Default 1.2
 Backtest <- R6Class("Backtest", lock_objects = FALSE,
                     public = list(
                       data_wide = NULL,
@@ -109,6 +109,9 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                         cat("Window Type: ", self$window, "\n")
                         cat("Stocks Preselected: ", self$stocks_preselected, "\n")
                         cat("Transaction Cost: ", self$transaction_cost, "\n")
+                        cat("Testing Period: ", 
+                            format(self$dates[ self$first_test], "%d-%B-%Y"),
+                            " to ", format(self$dates[ length(self$dates) ], "%d-%B-%Y") )
                       }
                       ,
                       
@@ -152,7 +155,6 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                         
                         weighted_returns <-  y_ret*y_pred
                         portfolio_return <- k_sum(weighted_returns, axis = 2)
-                        
                         y_pred_net <- y_ret + 1
                         prior_weights <- y_pred*y_pred_net
                         weights_to_rebalance <-   tf$strided_slice( y_pred,
@@ -172,11 +174,11 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                         turn <-k_sum(tf$abs(weights_to_rebalance - prior_weights_stride),
                                      axis = 2)/k_sum(prior_weights_stride, axis = 2)
                         
-                        transaction_cost <- self$transaction_fee*k_mean(turn)
+                        transaction_cost <- backend$constant(self$transaction_fee, dtype=tf$float16) *k_mean(turn)
                         
                         mean_return <- backend$mean(portfolio_return)
-                        std_return <- backend$std(portfolio_return)+backend$constant(0.001)
-                        sharpe_ratio <- (mean_return-transaction_cost) / (std_return)
+                        std_return <- backend$std(portfolio_return)
+                        sharpe_ratio <- (mean_return- transaction_cost) / (std_return)
                         # Check if the tensor is NaN
                         is_nan <- tf$equal(sharpe_ratio, sharpe_ratio) 
                         sharpe_ratio <- tf$where(is_nan, x = sharpe_ratio, y = 0)
@@ -370,10 +372,66 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                         
                         model_sequential %>% compile(
                           loss = loss,
-                          optimizer = optimizer_adam(learning_rate =as.double(self$learning_rate))
+                          optimizer = optimizer_adam(learning_rate =as.double(self$learning_rate), clipnorm = 1)
                         )
                         
                         return(model_sequential)
+                      },
+                      
+                      
+                      build_conv_model = function(n_stocks, learning_rate=self$learning_rate, data, loss = self$sharpe_ratio_loss,timesteps=12 ) {
+                        
+                        num_features <- dim(data)[3]
+                        model_sequential <- keras_model_sequential() 
+                        model_sequential %>%
+                          layer_conv_1d(filters=n_stocks*2, 
+                                        kernel_size=2, 
+                                        activation="sigmoid",
+                                        input_shape = c(timesteps, num_features)
+                          ) %>%  layer_lambda(self$row_scale) %>%
+                          layer_conv_1d(filters=n_stocks, 
+                                                kernel_size=2, 
+                                                activation="tanh"
+                          ) %>%   layer_lambda(self$row_scale) %>%
+                          layer_spatial_dropout_1d(self$rate)%>%
+                          layer_flatten() %>% 
+                          layer_dense(units = n_stocks,
+                                      activation = "tanh")%>%layer_lambda(self$row_scale) %>%
+                          layer_dense(units = n_stocks,
+                                      activation = "linear") %>%  
+                          layer_lambda(self$row_scale) %>% 
+                          layer_lambda(self$w_full_constraint_leverage)
+                        
+                        model_sequential %>% compile(
+                          loss = loss,
+                          optimizer = optimizer_rmsprop(learning_rate =as.double(0.00001), clipnorm = 1, clipvalue = 0.01)
+                        ) 
+                        
+                        return(model_sequential)
+                      },
+                      
+                      generate_time_seq_datasets = function(window_data, window_returns, val_window_data, 
+                                                            val_returns, data_wide, returns, t, val_window) {
+                        train_dataset <- timeseries_dataset_from_array(window_data, window_returns, 12)
+                        train_features <- train_dataset$features
+                        train_target <- train_dataset$target
+                        
+                        val_dataset <- timeseries_dataset_from_array(val_window_data, val_returns, 12)
+                        val_features <- val_dataset$features
+                        val_target <- val_dataset$target
+                        
+                        predict_data <- as.matrix(data_wide[(t + val_window - 11):(t + val_window),])
+                        predict_returns <- as.matrix(returns[(t + val_window - 11):(t + val_window),])
+                        predict_dataset <- timeseries_dataset_from_array(predict_data, predict_returns, 12)
+                        predict_features <- predict_dataset$features
+                        
+                        return(list(
+                          train_features = train_features,
+                          train_target = train_target,
+                          val_features = val_features,
+                          val_target = val_target,
+                          predict_features = predict_features
+                        ))
                       },
                       
                       backtest = function(t, data_wide, returns, model="simple",
@@ -386,7 +444,7 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                                   is.data.frame(data_wide),
                                   is.data.frame(returns),
                                   window %in% c("fixed", "expand"),
-                                  model %in% c("simple", "lstm", "complex"),
+                                  model %in% c("simple", "lstm", "complex", "conv"),
                                   is.logical(stocks_preselected),
                                   is.logical(transaction_cost)
                         )
@@ -394,7 +452,7 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                         n_stock_selected <- ncol(returns)
                         
                         # Data subset
-                        if (window=="fixed"| model == "lstm"){
+                        if (window=="fixed"){
                           
                           window_data <- as.matrix(data_wide[(t-self$training_window+1):t,])
                           window_returns <- as.matrix(returns[(t-self$training_window+1):t,])
@@ -482,23 +540,22 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                             )
                             
                             prediction_w_t <- predict(model, list(data_predict,data_predict))
-                          } else if (model == "lstm"){
+                          
+                            } else if (model == "lstm"){
                             # Building sequences
-                            data_lstm_train <- timeseries_dataset_from_array(window_data, window_returns, 12)
-                            lstm_features_train<- data_lstm_train$features
-                            lstm_features_target <- data_lstm_train$target 
+                            datasets_lstm <- self$generate_time_seq_datasets(window_data, window_returns, 
+                                                                        val_window_data, val_returns, 
+                                                                        data_wide, returns, t, self$val_window)
                             
-                            data_lstm_val <- timeseries_dataset_from_array(val_window_data, val_returns, 12)
-                            lstm_features_val<- data_lstm_val$features
-                            lstm_target_val <- data_lstm_val$target
-                            
-                            data_predict <- as.matrix(data_wide[(t+self$val_window-11):(t+self$val_window),])
-                            return_observed <- as.matrix(returns[(t+self$val_window-11):(t+self$val_window),])
-                            data_lstm_predict <- timeseries_dataset_from_array(data_predict, return_observed, 12)
-                            lstm_feat_pred <- data_lstm_predict$features
+                            lstm_features_train<- datasets_lstm$train_features
+                            lstm_features_target <- datasets_lstm$train_target 
+                            lstm_features_val<- datasets_lstm$val_features
+                            lstm_target_val <- datasets_lstm$val_target
+                            lstm_feat_pred <- datasets_lstm$predict_features
                             
                             model <- self$build_lstm_model(n_stock_selected, self$rate, self$units_choice,
-                                                      self$learning_rate, lstm_features_train, loss = loss_fun,timesteps=12)
+                                                      self$learning_rate, lstm_features_train, loss = loss_fun, 
+                                                      timesteps=12)
                             
                             model %>% fit(
                               lstm_features_train ,lstm_features_target ,
@@ -510,6 +567,30 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                             
                             prediction_w_t <- predict(model, lstm_feat_pred)
                             
+                          } else if (model == "conv") {
+                            
+                            datasets_conv <- self$generate_time_seq_datasets(window_data, window_returns, 
+                                                                        val_window_data, val_returns, 
+                                                                        data_wide, returns, t, self$val_window)
+                            conv_features_train<- datasets_conv$train_features
+                            conv_target_train <- datasets_conv$train_target 
+                            conv_features_val<- datasets_conv$val_features
+                            conv_target_val <- datasets_conv$val_target
+                            conv_feat_pred <- datasets_conv$predict_features
+                            
+                            model <- self$build_conv_model(n_stock_selected, self$learning_rate, conv_features_train, 
+                                                           loss = loss_fun, timesteps=12)
+                            
+                            model %>% fit(
+                              conv_features_train ,conv_target_train ,
+                              epochs = self$epochs,
+                              batch_size = 12,
+                              shuffle = FALSE,
+                              validation_data = list(conv_features_val, conv_target_val),
+                              callbacks = list(early_stopping, lr_callback)
+                            )
+                            
+                            prediction_w_t <- predict(model, conv_feat_pred)
                           }
                         
                         
@@ -550,7 +631,7 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                       },
                       apply_backtest_to_periods = function() {
                         if (self$model=="all"){
-                          all_models <- c("simple", "complex", "lstm")
+                          all_models <- c("simple", "complex", "lstm", "conv")
                           
                           self$weights <- list()
                           
@@ -574,7 +655,10 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                                                 self$data_wide, self$returns, model = self$model, 
                                                 window = self$window, stocks_preselected = self$stocks_preselected, 
                                                 transaction_cost = self$transaction_cost)
-                          self$weights <- append(self$weights, list(results))
+                          
+                          model_weights <- self$extract_weights(results)
+                          
+                          self$weights <- append(self$weights, list(model_weights))
                           names(self$weights)[1] <- self$model
                         }
                         
@@ -713,7 +797,7 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                         )
                         
                         
-                        # Display the tables side by side
+                        
                         table1 <- knitr::kable(
                           table_data1,booktabs = TRUE, valign = 't', digits = 4,
                           caption = 'Performance Metrics.'
@@ -721,13 +805,15 @@ Backtest <- R6Class("Backtest", lock_objects = FALSE,
                           kable_styling(bootstrap_options = c("striped"))
                         
                         table2 <-  kable(CAPM_alpha_results) %>%
-                          kable_styling(full_width = FALSE, position = "float_left")
-                        kable(FF3_alpha_results) %>%
+                          kable_styling(full_width = FALSE, position = "float_left") %>%
+                          kable_styling(bootstrap_options = c("striped"))
+                        
+                          table3 <- kable(FF3_alpha_results) %>%
                           kable_styling(full_width = FALSE, position = "left")%>%
                           kable_styling(bootstrap_options = c("striped"))
                         
                         
-                        return(list(statistics = table1, alphas = table2))
+                        return(list(statistics = table1, capm_alpha = table2, ff3_alpha = table3))
                       }
                       
                       
