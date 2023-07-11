@@ -173,32 +173,40 @@ impute_returns <- function(returns) {
   }
   imputed_returns <- returns
   first_index <- na_stats[1, 1]
-  occurences_end <- na_stats[nrow(na_stats), 2]
-  last_index <- na_stats[nrow(na_stats), 1]
+  occurences_end <- na_stats[nrow(na_stats), 1] + na_stats[nrow(na_stats), 2]-1
     
-  if (first_index != 1) {
-      
-      temp <- imputed_returns[first_index:(last_index-1)]
+  if (first_index != 1 ) { #If return is not missing on first date 
+      #Fill all NA values with 0
+    if (occurences_end != length(imputed_returns)) {
+    
+      temp <- imputed_returns[first_index:occurences_end]
+      temp[is.na(temp)] <- 0 
+      imputed_returns[first_index:occurences_end] <- temp
+    } else if (occurences_end == length(imputed_returns)) {
+      end <- na_stats[nrow(na_stats), 1]-1
+      temp <- imputed_returns[first_index:end]
       temp[is.na(temp)] <- 0
-      imputed_returns[first_index:(last_index-1)] <- temp
+      imputed_returns[first_index:end] <- temp
       
-      if ((last_index + occurences_end-1) != length(imputed_returns)) {
-        imputed_returns[(last_index + 1):length(imputed_returns)] <- 0
-      }
-    } else {
-      
-      if (nrow(na_stats)!=1) {
-      start <- na_stats[1, 2]
-      temp <- imputed_returns[start:(last_index-1)]
-      temp[is.na(temp)] <- 0
-      imputed_returns[start:(last_index-1)] <- temp
-      
-      if ((last_index + occurences_end-1) != length(imputed_returns)) {
-        imputed_returns[(last_index + 1):length(imputed_returns)] <- 0
-            }
-        }
     }
-  
+      
+    } else if (first_index == 1)  { # if NA is missing in the beginning
+      if (nrow(na_stats)!=1) {
+      
+      start <- na_stats[2, 1]
+      if  (occurences_end != length(imputed_returns)) { #But there is return in the end
+      temp <- imputed_returns[start:occurences_end]
+      temp[is.na(temp)] <- 0
+      imputed_returns[start:occurences_end] <- temp 
+      
+      } else { #The return is missing in the end as well
+        end <- na_stats[nrow(na_stats), 1]-1
+        temp <- imputed_returns[start:end]
+        temp[is.na(temp)] <- 0
+        imputed_returns[start:occurences_end] <- temp
+      }
+      }
+        } 
   return(imputed_returns)
 }
 
