@@ -51,7 +51,6 @@ The complex architecture is particularly motivated by the idea that some portfol
 
 The models are trained with custom loss functions linked to portfolio outcomes rather than standard classification or regression losses. In particular, the framework emphasizes a **Sharpe-ratio-based objective**, with variants that account for missing values and transaction-cost effects.
 
-This is closer to the problem faced by an allocator or systematic PM: not “Was the next return predicted exactly?”, but “Did the generated portfolio improve the risk-adjusted outcome?”
 
 ### 4. Portfolio constraints
 
